@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       WP MCP Control
- * Plugin URI:        https://github.com/your-org/wp-mcp-control
+ * Plugin URI:        https://github.com/yuo2007/ultimate-mcp-wordpress
  * Description:        Free, open Model Context Protocol (MCP) server for WordPress. Lets Claude, ChatGPT and other MCP clients manage posts, media, users, taxonomies, comments, options, plugins, themes, WooCommerce and Polylang translations.
  * Version:           0.6.0
  * Requires at least: 5.8
