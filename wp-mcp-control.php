@@ -6,7 +6,8 @@
  * Version:           0.6.0
  * Requires at least: 5.8
  * Requires PHP:      7.0
- * Author:            You
+ * Author:            Oleksandr Simonov
+ * Author URI:        https://www.linkedin.com/in/%D0%BE%D0%BB%D0%B5%D0%BA%D1%81%D0%B0%D0%BD%D0%B4%D1%80-%D1%81%D1%96%D0%BC%D0%BE%D0%BD%D0%BE%D0%B2-522aa2b0/
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       wp-mcp-control
