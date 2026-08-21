@@ -1,0 +1,799 @@
+<?php
+/**
+ * Minimal OAuth 2.1 authorization server for the MCP endpoint.
+ *
+ * Implements exactly what an MCP client needs to "sign in with WordPress":
+ *   - RFC 9728 protected-resource metadata + a WWW-Authenticate challenge
+ *   - RFC 8414 authorization-server metadata
+ *   - RFC 7591 dynamic client registration (public clients, no secret)
+ *   - authorization_code grant with mandatory PKCE (S256)
+ *   - refresh_token grant
+ *
+ * The access token maps to the WordPress user who signed in and approved, so
+ * every per-object capability check in the tools applies to that real user.
+ *
+ * All endpoints are served from parse_request (plain front-end requests) rather
+ * than the REST API, so browser cookie auth on /authorize behaves normally and
+ * there is no REST nonce to fight.
+ *
+ * @package WPMCP
+ */
+
+namespace WPMCP;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Class OAuth
+ */
+class OAuth {
+
+	const CLIENTS      = 'wpmcp_oauth_clients';
+	const TOKENS       = 'wpmcp_oauth_tokens';
+	const REFRESH      = 'wpmcp_oauth_refresh';
+	const BASE         = 'wp-mcp-oauth';
+	const AT_PREFIX    = 'mcpoa_';
+	const RT_PREFIX    = 'mcpor_';
+	const CODE_TTL     = 300;            // seconds — room for a slow login/consent.
+	const AT_TTL       = 2592000;        // 30 days.
+	const RT_TTL       = 15552000;       // 180 days.
+
+	/**
+	 * Register hooks.
+	 */
+	public function register() {
+		add_action( 'parse_request', array( $this, 'handle_request' ) );
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* URLs                                                                   */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * The token this server issues acts as this identity (the resource).
+	 *
+	 * @return string
+	 */
+	private function resource_url() {
+		return rest_url( WPMCP_NAMESPACE . '/mcp' );
+	}
+
+	/**
+	 * Issuer identifier — the site origin.
+	 *
+	 * @return string
+	 */
+	private function issuer() {
+		return untrailingslashit( home_url() );
+	}
+
+	/**
+	 * URL of an OAuth endpoint.
+	 *
+	 * @param string $path Sub-path (authorize|token|register).
+	 * @return string
+	 */
+	private function endpoint( $path ) {
+		return home_url( '/' . self::BASE . '/' . $path );
+	}
+
+	/**
+	 * URL of the protected-resource metadata document.
+	 *
+	 * @return string
+	 */
+	public function resource_metadata_url() {
+		return home_url( '/.well-known/oauth-protected-resource' );
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* Routing                                                                */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * Intercept OAuth and discovery paths before WordPress renders a page.
+	 *
+	 * @param \WP $wp Environment (unused).
+	 */
+	public function handle_request( $wp ) {
+		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+		$path = '/' . ltrim( $path, '/' );
+
+		// Discovery documents. Match the bare path and any resource-scoped
+		// suffix a client may append (…/oauth-protected-resource/wp-json/…).
+		if ( $this->path_is( $path, '/.well-known/oauth-protected-resource' ) ) {
+			$this->send_json( $this->protected_resource_metadata() );
+		}
+		if ( $this->path_is( $path, '/.well-known/oauth-authorization-server' ) ) {
+			$this->send_json( $this->authorization_server_metadata() );
+		}
+
+		$base = '/' . self::BASE . '/';
+		if ( 0 !== strpos( $path, $base ) ) {
+			return;
+		}
+		$action = substr( $path, strlen( $base ) );
+
+		switch ( $action ) {
+			case 'authorize':
+				$this->authorize();
+				break;
+			case 'token':
+				$this->token();
+				break;
+			case 'register':
+				$this->register_client();
+				break;
+			case 'status':
+				$this->status();
+				break;
+			default:
+				$this->send_json( array( 'error' => 'not_found' ), 404 );
+		}
+	}
+
+	/**
+	 * Whether a request path equals a base or is a sub-path of it.
+	 *
+	 * @param string $path Request path.
+	 * @param string $base Base path.
+	 * @return bool
+	 */
+	private function path_is( $path, $base ) {
+		return $path === $base || 0 === strpos( $path, $base . '/' );
+	}
+
+	/**
+	 * Unauthenticated health document. Reveals no secrets — just enough to
+	 * confirm what is deployed and whether the sign-in flow can work.
+	 */
+	private function status() {
+		$this->cors();
+		$s = wpmcp()->auth->settings();
+		$this->send_json(
+			array(
+				'plugin'        => 'wp-mcp-control',
+				'version'       => WPMCP_VERSION,
+				'enabled'       => ! empty( $s['enabled'] ),
+				'oauth'         => true,
+				'mcp_endpoint'  => $this->resource_url(),
+				'pretty_permalinks' => (bool) get_option( 'permalink_structure' ),
+			)
+		);
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* Metadata                                                               */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * RFC 9728 protected-resource metadata.
+	 *
+	 * @return array
+	 */
+	private function protected_resource_metadata() {
+		return array(
+			'resource'                 => $this->resource_url(),
+			'authorization_servers'    => array( $this->issuer() ),
+			'bearer_methods_supported' => array( 'header' ),
+			'scopes_supported'         => array( 'mcp' ),
+		);
+	}
+
+	/**
+	 * RFC 8414 authorization-server metadata.
+	 *
+	 * @return array
+	 */
+	private function authorization_server_metadata() {
+		return array(
+			'issuer'                                => $this->issuer(),
+			'authorization_endpoint'                => $this->endpoint( 'authorize' ),
+			'token_endpoint'                        => $this->endpoint( 'token' ),
+			'registration_endpoint'                 => $this->endpoint( 'register' ),
+			'response_types_supported'              => array( 'code' ),
+			'grant_types_supported'                 => array( 'authorization_code', 'refresh_token' ),
+			'code_challenge_methods_supported'      => array( 'S256' ),
+			'token_endpoint_auth_methods_supported' => array( 'none' ),
+			'scopes_supported'                      => array( 'mcp' ),
+		);
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* Dynamic client registration (RFC 7591)                                 */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * Register a public client and return its credentials.
+	 */
+	private function register_client() {
+		$this->cors();
+		if ( $this->is_preflight() ) {
+			$this->no_content();
+		}
+
+		$body = json_decode( $this->raw_body(), true );
+		if ( ! is_array( $body ) ) {
+			$this->send_json( array( 'error' => 'invalid_client_metadata' ), 400 );
+		}
+
+		$redirect_uris = isset( $body['redirect_uris'] ) ? (array) $body['redirect_uris'] : array();
+		$redirect_uris = array_values( array_filter( array_map( array( $this, 'clean_redirect_uri' ), $redirect_uris ) ) );
+		if ( empty( $redirect_uris ) ) {
+			$this->send_json( array( 'error' => 'invalid_redirect_uri' ), 400 );
+		}
+
+		$client_id = 'wpmcp-' . bin2hex( random_bytes( 16 ) );
+		$clients   = (array) get_option( self::CLIENTS, array() );
+
+		// Keep the store bounded; drop the oldest when it grows large.
+		if ( count( $clients ) >= 200 ) {
+			$clients = array_slice( $clients, -100, null, true );
+		}
+
+		$clients[ $client_id ] = array(
+			'redirect_uris' => $redirect_uris,
+			'client_name'   => isset( $body['client_name'] ) ? sanitize_text_field( (string) $body['client_name'] ) : '',
+			'created'       => time(),
+		);
+		update_option( self::CLIENTS, $clients, false );
+
+		$this->send_json(
+			array(
+				'client_id'                => $client_id,
+				'redirect_uris'            => $redirect_uris,
+				'token_endpoint_auth_method' => 'none',
+				'grant_types'              => array( 'authorization_code', 'refresh_token' ),
+				'response_types'           => array( 'code' ),
+				'client_name'              => $clients[ $client_id ]['client_name'],
+			),
+			201
+		);
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* Authorization endpoint                                                 */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * Handle GET (show consent) and POST (record decision) of /authorize.
+	 */
+	private function authorize() {
+		$params = 'POST' === $this->method() ? $this->post_params() : $this->get_params();
+
+		$client_id     = isset( $params['client_id'] ) ? (string) $params['client_id'] : '';
+		$redirect_uri  = isset( $params['redirect_uri'] ) ? (string) $params['redirect_uri'] : '';
+		$state         = isset( $params['state'] ) ? (string) $params['state'] : '';
+		$challenge     = isset( $params['code_challenge'] ) ? (string) $params['code_challenge'] : '';
+		$challenge_m   = isset( $params['code_challenge_method'] ) ? (string) $params['code_challenge_method'] : '';
+		$response_type = isset( $params['response_type'] ) ? (string) $params['response_type'] : '';
+
+		$client = $this->get_client( $client_id );
+		if ( ! $client ) {
+			wp_die( esc_html__( 'Unknown OAuth client.', 'wp-mcp-control' ), '', array( 'response' => 400 ) );
+		}
+		// redirect_uri must exactly match one the client registered. Until it is
+		// validated we must NOT redirect errors to it.
+		if ( ! in_array( $redirect_uri, $client['redirect_uris'], true ) ) {
+			wp_die( esc_html__( 'Invalid redirect_uri for this client.', 'wp-mcp-control' ), '', array( 'response' => 400 ) );
+		}
+		if ( 'code' !== $response_type ) {
+			$this->redirect_error( $redirect_uri, 'unsupported_response_type', $state );
+		}
+		if ( 'S256' !== $challenge_m || '' === $challenge ) {
+			$this->redirect_error( $redirect_uri, 'invalid_request', $state, 'PKCE with S256 is required.' );
+		}
+
+		// Require a logged-in WordPress session; auth_redirect() sends the user
+		// to wp-login and returns here afterwards.
+		if ( ! is_user_logged_in() ) {
+			auth_redirect();
+			exit;
+		}
+
+		$user = wp_get_current_user();
+		if ( ! $this->user_may_connect( $user ) ) {
+			wp_die(
+				esc_html__( 'Your account is not permitted to connect an MCP client to this site.', 'wp-mcp-control' ),
+				'',
+				array( 'response' => 403 )
+			);
+		}
+
+		if ( 'POST' === $this->method() ) {
+			check_admin_referer( 'wpmcp_oauth_consent' );
+			if ( empty( $params['approve'] ) ) {
+				$this->redirect_error( $redirect_uri, 'access_denied', $state );
+			}
+			$code = $this->issue_code( $client_id, (int) $user->ID, $redirect_uri, $challenge );
+			$this->redirect_success( $redirect_uri, $code, $state );
+		}
+
+		$this->render_consent( $client, $params, $user );
+	}
+
+	/**
+	 * Whether a user may authorize a connection.
+	 *
+	 * @param \WP_User $user User.
+	 * @return bool
+	 */
+	private function user_may_connect( $user ) {
+		/**
+		 * Minimum capability required to sign in an MCP client.
+		 *
+		 * @param string $cap Capability.
+		 */
+		$cap = (string) apply_filters( 'wpmcp_oauth_min_capability', 'edit_posts' );
+		return $user && user_can( $user, $cap );
+	}
+
+	/**
+	 * Render the consent screen.
+	 *
+	 * @param array    $client Client record.
+	 * @param array    $params Request params.
+	 * @param \WP_User $user   Current user.
+	 */
+	private function render_consent( $client, $params, $user ) {
+		$name  = $client['client_name'] ? $client['client_name'] : __( 'An MCP client', 'wp-mcp-control' );
+		$roles = implode( ', ', (array) $user->roles );
+
+		$hidden = array( 'client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'response_type', 'scope' );
+
+		// A self-contained page: login_header()/login_footer() live in
+		// wp-login.php, which is not loaded on a normal front-end request.
+		nocache_headers();
+		if ( ! headers_sent() ) {
+			header( 'Content-Type: text/html; charset=utf-8' );
+		}
+		?>
+<!DOCTYPE html>
+<html <?php language_attributes(); ?>>
+<head>
+	<meta charset="<?php bloginfo( 'charset' ); ?>">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="robots" content="noindex,nofollow">
+	<title><?php esc_html_e( 'Authorize access', 'wp-mcp-control' ); ?></title>
+	<style>
+		body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f0f0f1;color:#3c434a;margin:0;padding:40px 16px;}
+		.card{max-width:460px;margin:0 auto;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:28px 30px;}
+		h1{font-size:20px;margin:0 0 4px;}
+		.site{color:#646970;font-size:13px;margin:0 0 20px;}
+		p{font-size:14px;line-height:1.6;}
+		.who{background:#f6f7f7;border-radius:6px;padding:10px 12px;font-size:13px;}
+		.actions{display:flex;gap:10px;margin-top:24px;}
+		button{font-size:14px;padding:9px 18px;border-radius:5px;cursor:pointer;border:1px solid #2271b1;}
+		.approve{background:#2271b1;color:#fff;}
+		.deny{background:#fff;color:#2271b1;}
+		.foot{color:#646970;font-size:12px;margin-top:18px;}
+		a{color:#2271b1;}
+	</style>
+</head>
+<body>
+	<div class="card">
+		<h1><?php echo esc_html( $name ); ?> <?php esc_html_e( 'wants to connect', 'wp-mcp-control' ); ?></h1>
+		<p class="site"><?php echo esc_html( get_bloginfo( 'name' ) ); ?> — <?php echo esc_html( home_url() ); ?></p>
+		<p><?php esc_html_e( 'This will let the client read and manage your site through the Model Context Protocol.', 'wp-mcp-control' ); ?></p>
+		<p class="who">
+			<?php
+			printf(
+				/* translators: 1: user login, 2: roles */
+				esc_html__( 'It will act as %1$s (%2$s), limited to that account\'s permissions.', 'wp-mcp-control' ),
+				'<strong>' . esc_html( $user->user_login ) . '</strong>',
+				esc_html( $roles )
+			);
+			?>
+		</p>
+		<form method="post">
+			<?php wp_nonce_field( 'wpmcp_oauth_consent' ); ?>
+			<?php foreach ( $hidden as $k ) : ?>
+				<input type="hidden" name="<?php echo esc_attr( $k ); ?>" value="<?php echo esc_attr( isset( $params[ $k ] ) ? $params[ $k ] : '' ); ?>">
+			<?php endforeach; ?>
+			<div class="actions">
+				<button type="submit" name="approve" value="1" class="approve"><?php esc_html_e( 'Approve', 'wp-mcp-control' ); ?></button>
+				<button type="submit" name="approve" value="" class="deny"><?php esc_html_e( 'Deny', 'wp-mcp-control' ); ?></button>
+			</div>
+		</form>
+		<p class="foot">
+			<?php esc_html_e( 'Signed in as', 'wp-mcp-control' ); ?> <?php echo esc_html( $user->user_login ); ?> —
+			<a href="<?php echo esc_url( wp_logout_url( $this->current_url() ) ); ?>"><?php esc_html_e( 'switch account', 'wp-mcp-control' ); ?></a>
+		</p>
+	</div>
+</body>
+</html>
+		<?php
+		exit;
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* Token endpoint                                                         */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * Handle POST /token.
+	 */
+	private function token() {
+		$this->cors();
+		if ( $this->is_preflight() ) {
+			$this->no_content();
+		}
+
+		$params = $this->post_params();
+		$grant  = isset( $params['grant_type'] ) ? (string) $params['grant_type'] : '';
+
+		if ( 'authorization_code' === $grant ) {
+			$this->grant_authorization_code( $params );
+		} elseif ( 'refresh_token' === $grant ) {
+			$this->grant_refresh_token( $params );
+		} else {
+			$this->send_json( array( 'error' => 'unsupported_grant_type' ), 400 );
+		}
+	}
+
+	/**
+	 * Exchange an authorization code (+ PKCE verifier) for tokens.
+	 *
+	 * @param array $params Request params.
+	 */
+	private function grant_authorization_code( $params ) {
+		$code         = isset( $params['code'] ) ? (string) $params['code'] : '';
+		$client_id    = isset( $params['client_id'] ) ? (string) $params['client_id'] : '';
+		$redirect_uri = isset( $params['redirect_uri'] ) ? (string) $params['redirect_uri'] : '';
+		$verifier     = isset( $params['code_verifier'] ) ? (string) $params['code_verifier'] : '';
+
+		$key    = 'wpmcp_ac_' . hash( 'sha256', $code );
+		$record = get_transient( $key );
+		delete_transient( $key ); // Single use, whatever the outcome.
+
+		if ( ! is_array( $record ) ) {
+			$this->send_json( array( 'error' => 'invalid_grant' ), 400 );
+		}
+		// A public PKCE client may omit client_id / redirect_uri at the token
+		// endpoint (the code + verifier already bind the grant). Only reject
+		// when a value is present AND disagrees with what was authorized.
+		if ( '' !== $client_id && ! hash_equals( (string) $record['client_id'], $client_id ) ) {
+			$this->send_json( array( 'error' => 'invalid_grant' ), 400 );
+		}
+		if ( '' !== $redirect_uri && ! hash_equals( (string) $record['redirect_uri'], $redirect_uri ) ) {
+			$this->send_json( array( 'error' => 'invalid_grant' ), 400 );
+		}
+
+		// PKCE: base64url( sha256( verifier ) ) must equal the stored challenge.
+		$computed = $this->b64url( hash( 'sha256', $verifier, true ) );
+		if ( '' === $verifier || ! hash_equals( (string) $record['code_challenge'], $computed ) ) {
+			$this->send_json( array( 'error' => 'invalid_grant' ), 400 );
+		}
+
+		$this->issue_tokens( (int) $record['user_id'], $client_id );
+	}
+
+	/**
+	 * Issue a fresh access token from a refresh token.
+	 *
+	 * @param array $params Request params.
+	 */
+	private function grant_refresh_token( $params ) {
+		$refresh   = isset( $params['refresh_token'] ) ? (string) $params['refresh_token'] : '';
+		$client_id = isset( $params['client_id'] ) ? (string) $params['client_id'] : '';
+
+		$store = (array) get_option( self::REFRESH, array() );
+		$hash  = hash( 'sha256', $refresh );
+		$rec   = isset( $store[ $hash ] ) ? $store[ $hash ] : null;
+
+		if ( ! is_array( $rec ) || (int) $rec['expires'] < time() || ! hash_equals( (string) $rec['client_id'], $client_id ) ) {
+			$this->send_json( array( 'error' => 'invalid_grant' ), 400 );
+		}
+
+		// Rotate: the presented refresh token is consumed.
+		unset( $store[ $hash ] );
+		update_option( self::REFRESH, $store, false );
+
+		$this->issue_tokens( (int) $rec['user_id'], $client_id );
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* Token storage                                                          */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * Create and persist an authorization code, returning the plaintext.
+	 *
+	 * @param string $client_id    Client.
+	 * @param int    $user_id      User.
+	 * @param string $redirect_uri Redirect URI.
+	 * @param string $challenge    PKCE challenge.
+	 * @return string
+	 */
+	private function issue_code( $client_id, $user_id, $redirect_uri, $challenge ) {
+		$code = bin2hex( random_bytes( 32 ) );
+		set_transient(
+			'wpmcp_ac_' . hash( 'sha256', $code ),
+			array(
+				'client_id'      => $client_id,
+				'user_id'        => (int) $user_id,
+				'redirect_uri'   => $redirect_uri,
+				'code_challenge' => $challenge,
+			),
+			self::CODE_TTL
+		);
+		return $code;
+	}
+
+	/**
+	 * Mint an access + refresh token pair and emit the token response.
+	 *
+	 * @param int    $user_id   User the tokens act as.
+	 * @param string $client_id Client.
+	 */
+	private function issue_tokens( $user_id, $client_id ) {
+		if ( ! get_user_by( 'id', $user_id ) ) {
+			$this->send_json( array( 'error' => 'invalid_grant' ), 400 );
+		}
+
+		$access  = self::AT_PREFIX . bin2hex( random_bytes( 32 ) );
+		$refresh = self::RT_PREFIX . bin2hex( random_bytes( 32 ) );
+		$now     = time();
+
+		$tokens = $this->prune( (array) get_option( self::TOKENS, array() ) );
+		$tokens[ hash( 'sha256', $access ) ] = array(
+			'user_id'   => (int) $user_id,
+			'client_id' => $client_id,
+			'expires'   => $now + self::AT_TTL,
+		);
+		update_option( self::TOKENS, $tokens, false );
+
+		$refresh_store = $this->prune( (array) get_option( self::REFRESH, array() ) );
+		$refresh_store[ hash( 'sha256', $refresh ) ] = array(
+			'user_id'   => (int) $user_id,
+			'client_id' => $client_id,
+			'expires'   => $now + self::RT_TTL,
+		);
+		update_option( self::REFRESH, $refresh_store, false );
+
+		$this->send_json(
+			array(
+				'access_token'  => $access,
+				'token_type'    => 'Bearer',
+				'expires_in'    => self::AT_TTL,
+				'refresh_token' => $refresh,
+				'scope'         => 'mcp',
+			)
+		);
+	}
+
+	/**
+	 * Verify an access token and return the WordPress user it acts as.
+	 *
+	 * Called from Auth::permission_callback for bearer tokens that are not the
+	 * static token.
+	 *
+	 * @param string $token Presented bearer token.
+	 * @return int User ID, or 0 when invalid/expired.
+	 */
+	public function verify_access_token( $token ) {
+		if ( 0 !== strpos( $token, self::AT_PREFIX ) ) {
+			return 0;
+		}
+		$tokens = (array) get_option( self::TOKENS, array() );
+		$hash   = hash( 'sha256', $token );
+		if ( ! isset( $tokens[ $hash ] ) ) {
+			return 0;
+		}
+		$rec = $tokens[ $hash ];
+		if ( (int) $rec['expires'] < time() ) {
+			unset( $tokens[ $hash ] );
+			update_option( self::TOKENS, $tokens, false );
+			return 0;
+		}
+		return (int) $rec['user_id'];
+	}
+
+	/**
+	 * Drop expired entries from a token store.
+	 *
+	 * @param array $store Store.
+	 * @return array
+	 */
+	private function prune( array $store ) {
+		$now = time();
+		foreach ( $store as $k => $rec ) {
+			if ( ! isset( $rec['expires'] ) || (int) $rec['expires'] < $now ) {
+				unset( $store[ $k ] );
+			}
+		}
+		return $store;
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* Helpers                                                                */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * Fetch a registered client.
+	 *
+	 * @param string $client_id Client ID.
+	 * @return array|null
+	 */
+	private function get_client( $client_id ) {
+		$clients = (array) get_option( self::CLIENTS, array() );
+		return isset( $clients[ $client_id ] ) ? $clients[ $client_id ] : null;
+	}
+
+	/**
+	 * Validate and normalize a redirect URI.
+	 *
+	 * @param mixed $uri Candidate.
+	 * @return string Empty string when unacceptable.
+	 */
+	private function clean_redirect_uri( $uri ) {
+		$uri = esc_url_raw( trim( (string) $uri ), array( 'https', 'http' ) );
+		if ( '' === $uri ) {
+			return '';
+		}
+		$host   = strtolower( (string) wp_parse_url( $uri, PHP_URL_HOST ) );
+		$scheme = strtolower( (string) wp_parse_url( $uri, PHP_URL_SCHEME ) );
+
+		// Loopback may use http; everything else must be https.
+		$is_loopback = in_array( $host, array( 'localhost', '127.0.0.1', '::1' ), true );
+		if ( 'https' !== $scheme && ! $is_loopback ) {
+			return '';
+		}
+		return $uri;
+	}
+
+	/**
+	 * Redirect back to the client with an authorization code.
+	 *
+	 * @param string $redirect_uri Redirect URI.
+	 * @param string $code         Code.
+	 * @param string $state        State.
+	 */
+	private function redirect_success( $redirect_uri, $code, $state ) {
+		$args = array( 'code' => $code );
+		if ( '' !== $state ) {
+			$args['state'] = $state;
+		}
+		wp_redirect( add_query_arg( array_map( 'rawurlencode', $args ), $redirect_uri ) ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- client-registered URI.
+		exit;
+	}
+
+	/**
+	 * Redirect back to the client with an error.
+	 *
+	 * @param string $redirect_uri Redirect URI.
+	 * @param string $error        Error code.
+	 * @param string $state        State.
+	 * @param string $description  Optional description.
+	 */
+	private function redirect_error( $redirect_uri, $error, $state, $description = '' ) {
+		$args = array( 'error' => $error );
+		if ( '' !== $description ) {
+			$args['error_description'] = $description;
+		}
+		if ( '' !== $state ) {
+			$args['state'] = $state;
+		}
+		wp_redirect( add_query_arg( array_map( 'rawurlencode', $args ), $redirect_uri ) ); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- client-registered URI.
+		exit;
+	}
+
+	/**
+	 * base64url without padding.
+	 *
+	 * @param string $bin Binary string.
+	 * @return string
+	 */
+	private function b64url( $bin ) {
+		return rtrim( strtr( base64_encode( $bin ), '+/', '-_' ), '=' );
+	}
+
+	/**
+	 * Request method.
+	 *
+	 * @return string
+	 */
+	private function method() {
+		return isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) : 'GET';
+	}
+
+	/**
+	 * The current full URL.
+	 *
+	 * @return string
+	 */
+	private function current_url() {
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+		return home_url( $uri );
+	}
+
+	/**
+	 * Sanitized GET params.
+	 *
+	 * @return array
+	 */
+	private function get_params() {
+		return $this->clean_params( $_GET ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- OAuth params, validated below.
+	}
+
+	/**
+	 * Sanitized POST params (form-encoded or JSON).
+	 *
+	 * @return array
+	 */
+	private function post_params() {
+		if ( ! empty( $_POST ) ) {
+			return $this->clean_params( $_POST ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- consent uses check_admin_referer; token/refresh are unauthenticated by spec.
+		}
+		$json = json_decode( $this->raw_body(), true );
+		return is_array( $json ) ? $this->clean_params( $json ) : array();
+	}
+
+	/**
+	 * Shallow-sanitize a params array to strings.
+	 *
+	 * @param array $raw Raw input.
+	 * @return array
+	 */
+	private function clean_params( $raw ) {
+		$out = array();
+		foreach ( (array) $raw as $k => $v ) {
+			if ( is_scalar( $v ) ) {
+				$out[ sanitize_key( $k ) ] = sanitize_text_field( wp_unslash( (string) $v ) );
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Raw request body.
+	 *
+	 * @return string
+	 */
+	private function raw_body() {
+		return (string) file_get_contents( 'php://input' );
+	}
+
+	/**
+	 * Emit permissive CORS headers for token/register.
+	 */
+	private function cors() {
+		header( 'Access-Control-Allow-Origin: *' );
+		header( 'Access-Control-Allow-Methods: POST, OPTIONS' );
+		header( 'Access-Control-Allow-Headers: Content-Type, Authorization' );
+	}
+
+	/**
+	 * Whether this is a CORS preflight.
+	 *
+	 * @return bool
+	 */
+	private function is_preflight() {
+		return 'OPTIONS' === $this->method();
+	}
+
+	/**
+	 * End a preflight request.
+	 */
+	private function no_content() {
+		status_header( 204 );
+		exit;
+	}
+
+	/**
+	 * Send a JSON document and stop.
+	 *
+	 * @param array $data   Payload.
+	 * @param int   $status HTTP status.
+	 */
+	private function send_json( $data, $status = 200 ) {
+		if ( ! headers_sent() ) {
+			status_header( $status );
+			header( 'Content-Type: application/json; charset=utf-8' );
+			header( 'Cache-Control: no-store' );
+		}
+		echo wp_json_encode( $data );
+		exit;
+	}
+}
