@@ -4,7 +4,7 @@
  * Plugin URI:        https://github.com/yuo2007/ultimate-mcp-wordpress
  * Update URI:        https://github.com/yuo2007/ultimate-mcp-wordpress
  * Description:        Free, open Model Context Protocol (MCP) server for WordPress. Lets Claude, ChatGPT and other MCP clients manage posts, media, users, taxonomies, comments, options, plugins, themes, WooCommerce and Polylang translations.
- * Version:           0.6.2
+ * Version:           0.6.3
  * Requires at least: 5.8
  * Requires PHP:      7.0
  * Author:            Oleksandr Simonov
@@ -20,7 +20,7 @@ namespace WPMCP;
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'WPMCP_VERSION', '0.6.2' );
+define( 'WPMCP_VERSION', '0.6.3' );
 define( 'WPMCP_FILE', __FILE__ );
 define( 'WPMCP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPMCP_URL', plugin_dir_url( __FILE__ ) );

@@ -29,9 +29,15 @@ class Updater {
 	const CACHE_KEY = 'wpmcp_latest_release';
 
 	/**
-	 * How long a good answer is reused. Core itself only re-checks every 12 h.
+	 * How long a good answer is reused for ordinary background checks.
 	 */
-	const CACHE_TTL = 43200;
+	const CACHE_TTL = 900;
+
+	/**
+	 * How long a good answer is reused on the Updates screen, where someone is
+	 * actively looking. Matches the 60 s WordPress uses for its own data there.
+	 */
+	const FRESH_TTL = 60;
 
 	/**
 	 * How long a failure is remembered. Without this an unreachable or
@@ -39,6 +45,20 @@ class Updater {
 	 * admin page load.
 	 */
 	const ERROR_TTL = 1800;
+
+	/**
+	 * Resolved release for this request, so one page load costs one lookup.
+	 *
+	 * @var array|false
+	 */
+	private $memo = false;
+
+	/**
+	 * Whether $memo holds a resolved answer (false is a valid one).
+	 *
+	 * @var bool
+	 */
+	private $memo_set = false;
 
 	/**
 	 * Register hooks.
@@ -193,6 +213,8 @@ class Updater {
 	 */
 	public function flush_cache() {
 		delete_transient( self::CACHE_KEY );
+		$this->memo     = false;
+		$this->memo_set = false;
 	}
 
 	/* --------------------------------------------------------------------- */
@@ -205,15 +227,16 @@ class Updater {
 	 * @return array|false
 	 */
 	private function latest_release() {
-		// "Check again" on the Updates screen must reach GitHub, not our cache.
-		$force = ! empty( $_GET['force-check'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only cache bypass.
+		// check_for_update() and plugin_information() can both run in one
+		// request; neither should cost a second round trip.
+		if ( $this->memo_set ) {
+			return $this->memo;
+		}
 
-		if ( ! $force ) {
-			$cached = get_transient( self::CACHE_KEY );
-			if ( is_array( $cached ) ) {
-				// An empty array is a remembered failure.
-				return empty( $cached['version'] ) ? false : $cached;
-			}
+		$cached = get_transient( self::CACHE_KEY );
+		if ( is_array( $cached ) && isset( $cached['fetched'] ) && ! $this->needs_refresh( $cached ) ) {
+			// No 'version' is a remembered failure.
+			return $this->remember( empty( $cached['version'] ) ? false : $cached );
 		}
 
 		$response = wp_remote_get(
@@ -229,19 +252,88 @@ class Updater {
 		);
 
 		if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
-			set_transient( self::CACHE_KEY, array(), self::ERROR_TTL );
-			return false;
+			$this->store( array() );
+			return $this->remember( false );
 		}
 
 		$parsed = $this->parse_release( json_decode( wp_remote_retrieve_body( $response ), true ) );
 
-		set_transient(
-			self::CACHE_KEY,
-			$parsed ? $parsed : array(),
-			$parsed ? self::CACHE_TTL : self::ERROR_TTL
-		);
+		$this->store( $parsed ? $parsed : array() );
 
-		return $parsed;
+		return $this->remember( $parsed );
+	}
+
+	/**
+	 * Cache an answer, stamped so its age can be judged per context.
+	 *
+	 * The transient's own lifetime is only the outer bound; how long an entry
+	 * is actually reused is decided by needs_refresh(), which cannot be
+	 * expressed as a single expiry.
+	 *
+	 * @param array $payload Parsed release, or an empty array for a failure.
+	 */
+	private function store( array $payload ) {
+		$payload['fetched'] = time();
+		set_transient( self::CACHE_KEY, $payload, max( self::CACHE_TTL, self::ERROR_TTL ) );
+	}
+
+	/**
+	 * Memoize the answer for the rest of the request.
+	 *
+	 * @param array|false $value Resolved release.
+	 * @return array|false
+	 */
+	private function remember( $value ) {
+		$this->memo     = $value;
+		$this->memo_set = true;
+		return $value;
+	}
+
+	/**
+	 * Whether a cached answer is too old to reuse here.
+	 *
+	 * @param array $cached Cached payload.
+	 * @return bool
+	 */
+	private function needs_refresh( array $cached ) {
+		$age = time() - (int) $cached['fetched'];
+
+		// Retry a failure sooner than a success is refreshed, so an outage
+		// does not keep a site on an old version for the full cache window.
+		if ( empty( $cached['version'] ) ) {
+			return $age >= self::ERROR_TTL;
+		}
+
+		return $age >= $this->max_age();
+	}
+
+	/**
+	 * How stale an answer may be, given why it is being asked for.
+	 *
+	 * A single long cache made the feature look broken: someone who opens the
+	 * Updates screen is there *because* they want to know about updates, and
+	 * being told "up to date" from a half-day-old answer reads as a fault, not
+	 * as caching. WordPress refreshes its own plugin data every 60 seconds on
+	 * that screen, so match it there rather than sitting on top of it, and keep
+	 * a longer window for the background checks that fire on every admin page.
+	 *
+	 * The cache still exists for a reason: unauthenticated GitHub API calls are
+	 * limited to 60 an hour per IP, and on shared hosting that IP is shared
+	 * with every other site on the box.
+	 *
+	 * @return int Seconds.
+	 */
+	private function max_age() {
+		// "Check again" is an explicit instruction to go and look.
+		if ( ! empty( $_GET['force-check'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only cache bypass.
+			return 0;
+		}
+
+		if ( doing_action( 'load-update-core.php' ) ) {
+			return self::FRESH_TTL;
+		}
+
+		return self::CACHE_TTL;
 	}
 
 	/**

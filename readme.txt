@@ -4,7 +4,7 @@ Tags: mcp, ai, claude, chatgpt, automation, woocommerce, polylang
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.0
-Stable tag: 0.6.2
+Stable tag: 0.6.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -94,6 +94,10 @@ Note: the configured user acts with its full WordPress capabilities. Use the lea
 * Per-tool audit log.
 
 == Changelog ==
+
+= 0.6.3 =
+* Fixed: new versions took up to twelve hours to appear. The update check cached its answer for that long and only the "Check again" button went past it, so opening Dashboard → Updates could report "up to date" against a half-day-old answer — which reads as a broken feature, not as caching. How stale an answer may be now depends on why it is being asked for: no older than 60 seconds on the Updates screen, matching what WordPress uses for its own data there, 15 minutes for the background checks that fire on other admin pages, and always refetched when "Check again" is pressed. A cached failure is still retried after 30 minutes, so an outage cannot pin a site to an old version.
+* Changed: the release lookup is resolved once per request instead of once per caller, so a page that renders both the update row and the details modal no longer makes two API calls. The cache still exists to protect the unauthenticated GitHub rate limit of 60 requests an hour, which on shared hosting is shared with every other site on the same address.
 
 = 0.6.2 =
 * Security: `update_option` no longer writes transients. `_site_transient_update_plugins` and `_site_transient_update_themes` hold the package URL that WordPress downloads and unpacks on the next update, so writing one and then calling `update_plugin` installed arbitrary PHP from an arbitrary host. That is the same boundary the existing blocks on `uninstall_plugins` and `auto_update_plugins` exist to hold; the deny-list simply did not reach transients.
