@@ -4,7 +4,7 @@ Tags: mcp, ai, claude, chatgpt, automation, woocommerce, polylang
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.0
-Stable tag: 0.7.0
+Stable tag: 0.8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -91,9 +91,14 @@ Note: the configured user acts with its full WordPress capabilities. Use the lea
 == Roadmap ==
 
 * WPML integration.
-* Per-tool audit log.
 
 == Changelog ==
+
+= 0.8.0 =
+* Added: **read-only mode**. One checkbox and every tool that changes anything — creating, editing, deleting, installing, configuring — disappears from the client's tool list and is refused if called anyway. Worth switching on whenever a client is connected for research or reporting rather than editing. Withholding a tool works better than refusing it: a model that can see `delete_post` keeps reaching for it and reporting failures at you, while one that cannot see it never raises the subject.
+* Added: **an audit log** of tool calls, on the settings page. The last 100 calls with the account, the result and the identifiers involved, including the ones that were refused. Only identifiers are recorded — never post content, option values or passwords — so the log does not become a new place for secrets to sit.
+* Why both: every call this server makes is chosen by a model whose context is filled with text from this very site — post bodies, comments, profile fields, product descriptions. That text is untrusted input reaching the thing that decides what to do next, and no capability check can tell a real instruction from one written into a comment. Capabilities bound what a connection *may* do; these two decide how much of that is reachable at all, and leave a record of what actually happened.
+* Note for anyone extending the plugin: a tool is treated as a write unless it is named in `Tool_Registry::$read_only_tools`, so a tool added through `wpmcp_tool_groups` is restricted by default rather than silently escaping read-only mode. Override with the `wpmcp_tool_is_write` filter.
 
 = 0.7.0 =
 * Added: **Active connections** on the settings page. Every client that signed in with WordPress is listed with the account it acts as and when its access expires, and each can be revoked on the spot — which drops its tokens and removes its registration, so it has to sign in again from scratch. There was previously no way to see what had been authorized and no way to withdraw it: an access token lasts 30 days and a refresh token 180, so short of changing the WordPress password a connection could not be cut off.

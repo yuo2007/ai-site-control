@@ -52,6 +52,13 @@ final class Plugin {
 	public $updater;
 
 	/**
+	 * Tool-call audit log.
+	 *
+	 * @var Audit
+	 */
+	public $audit;
+
+	/**
 	 * Get the singleton instance.
 	 *
 	 * @return Plugin
@@ -69,6 +76,7 @@ final class Plugin {
 	private function __construct() {
 		$this->includes();
 		$this->auth  = new Auth();
+		$this->audit = new Audit();
 		$this->tools = new Tool_Registry();
 		$this->oauth = new OAuth();
 		$this->oauth->register();
@@ -95,6 +103,7 @@ final class Plugin {
 		require_once WPMCP_DIR . 'includes/class-auth.php';
 		require_once WPMCP_DIR . 'includes/class-oauth.php';
 		require_once WPMCP_DIR . 'includes/class-updater.php';
+		require_once WPMCP_DIR . 'includes/class-audit.php';
 		require_once WPMCP_DIR . 'includes/class-tool-registry.php';
 		require_once WPMCP_DIR . 'includes/class-mcp-server.php';
 		require_once WPMCP_DIR . 'includes/class-rest-controller.php';

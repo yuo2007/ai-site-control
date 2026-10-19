@@ -53,7 +53,8 @@ class Admin {
 		$s      = wp_parse_args( (array) get_option( Auth::OPTION, array() ), array( 'disabled_tools' => array() ) );
 
 		if ( 'save' === $action ) {
-			$s['enabled'] = ! empty( $_POST['enabled'] );
+			$s['enabled']   = ! empty( $_POST['enabled'] );
+			$s['read_only'] = ! empty( $_POST['read_only'] );
 			$user_id      = isset( $_POST['user_id'] ) ? (int) $_POST['user_id'] : 0;
 			if ( $user_id && ! $this->validate_actor( $user_id ) ) {
 				return;
@@ -67,6 +68,11 @@ class Admin {
 			$s['disabled_tools'] = array_values( array_diff( wpmcp()->tools->all_names(), $checked ) );
 			update_option( Auth::OPTION, $s );
 			add_settings_error( 'wpmcp', 'saved', 'Settings saved.', 'updated' );
+		}
+
+		if ( 'clear_log' === $action ) {
+			wpmcp()->audit->clear();
+			add_settings_error( 'wpmcp', 'cleared', 'Audit log cleared.', 'updated' );
 		}
 
 		if ( 'revoke' === $action ) {
@@ -150,6 +156,7 @@ class Admin {
 				'enabled'        => false,
 				'user_id'        => 0,
 				'token_hash'     => '',
+				'read_only'      => false,
 				'disabled_tools' => array(),
 			)
 		);
@@ -249,6 +256,19 @@ class Admin {
 					<tr>
 						<th scope="row">Enable MCP server</th>
 						<td><label><input type="checkbox" name="enabled" value="1" <?php checked( ! empty( $s['enabled'] ) ); ?>> Accept MCP requests</label></td>
+					</tr>
+					<tr>
+						<th scope="row">Read-only mode</th>
+						<td>
+							<label><input type="checkbox" name="read_only" value="1" <?php checked( ! empty( $s['read_only'] ) ); ?>> Refuse anything that changes the site</label>
+							<p class="description" style="max-width:640px;">
+								Only the listing and reading tools stay available; everything that creates, edits,
+								deletes, installs or configures disappears from the client's tool list and is refused
+								if called anyway. Worth switching on whenever a client is connected for research or
+								reporting rather than for editing &mdash; the model decides which tool to call, and
+								its context is full of text from this site that anyone could have written.
+							</p>
+						</td>
 					</tr>
 					<tr>
 						<th scope="row">Act as user</th>
@@ -362,6 +382,54 @@ class Admin {
 				<form method="post" style="margin-top:10px;">
 					<?php wp_nonce_field( 'wpmcp_settings' ); ?>
 					<button type="submit" name="wpmcp_action" value="revoke_all" class="button">Revoke all connections</button>
+				</form>
+			<?php endif; ?>
+
+			<?php $log = wpmcp()->audit->entries(); ?>
+			<h2>Recent tool calls</h2>
+			<?php if ( empty( $log ) ) : ?>
+				<p class="description">Nothing yet. Every tool a client runs is recorded here, including the ones that were refused.</p>
+			<?php else : ?>
+				<p class="description" style="max-width:880px;">
+					The last <?php echo (int) count( $log ); ?> calls, newest first. Capability checks decide what a
+					connection <em>may</em> do; this is what it actually did. Only identifiers are kept &mdash; never
+					post content, option values or passwords.
+				</p>
+				<table class="widefat striped" style="max-width:880px;">
+					<thead>
+						<tr><th>When</th><th>Tool</th><th>Result</th><th>Arguments</th><th>Account</th></tr>
+					</thead>
+					<tbody>
+					<?php
+					$colours = array(
+						'ok'      => '#008a20',
+						'denied'  => '#b32d2e',
+						'blocked' => '#b32d2e',
+						'error'   => '#bd8600',
+						'unknown' => '#b32d2e',
+					);
+					foreach ( $log as $row ) :
+						$user   = get_userdata( (int) ( $row['u'] ?? 0 ) );
+						$result = (string) ( $row['r'] ?? '' );
+						?>
+						<tr>
+							<td style="white-space:nowrap;"><?php echo esc_html( date_i18n( 'Y-m-d H:i', (int) ( $row['t'] ?? 0 ) ) ); ?></td>
+							<td><code><?php echo esc_html( (string) ( $row['tool'] ?? '' ) ); ?></code></td>
+							<td style="color:<?php echo esc_attr( $colours[ $result ] ?? '#3c434a' ); ?>;">
+								<?php echo esc_html( $result ); ?>
+								<?php if ( ! empty( $row['d'] ) ) : ?>
+									<br><span class="description"><?php echo esc_html( (string) $row['d'] ); ?></span>
+								<?php endif; ?>
+							</td>
+							<td><span class="description"><?php echo esc_html( (string) ( $row['a'] ?? '' ) ); ?></span></td>
+							<td><?php echo esc_html( $user ? $user->user_login : '&mdash;' ); ?></td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+				<form method="post" style="margin-top:10px;">
+					<?php wp_nonce_field( 'wpmcp_settings' ); ?>
+					<button type="submit" name="wpmcp_action" value="clear_log" class="button">Clear log</button>
 				</form>
 			<?php endif; ?>
 

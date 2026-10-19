@@ -32,6 +32,7 @@ class Auth {
 				'enabled'        => true,
 				'token_hash'     => '',
 				'user_id'        => 0,
+				'read_only'      => false,
 				'disabled_tools' => array(),
 			)
 		);

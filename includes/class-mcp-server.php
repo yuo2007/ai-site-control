@@ -177,18 +177,30 @@ class MCP_Server {
 			$args = (array) $args;
 		}
 
+		$audit = wpmcp()->audit;
+
 		if ( ! $this->tools->has( $name ) ) {
+			$audit->record( $name, 'unknown', $args );
 			return $this->error( $id, -32602, 'Unknown or disabled tool: ' . $name );
 		}
 
 		$def = $this->tools->get( $name );
 
+		// tools/list already withholds writes in read-only mode; this catches a
+		// client acting on a list it fetched before the setting changed.
+		if ( $this->tools->is_read_only() && $this->tools->is_write( $name ) ) {
+			$audit->record( $name, 'blocked', $args );
+			return $this->tool_error( $id, sprintf( 'This site is in read-only mode: "%s" changes data and is not available.', $name ) );
+		}
+
 		if ( ! empty( $def['capability'] ) && ! current_user_can( $def['capability'] ) ) {
+			$audit->record( $name, 'denied', $args, 'missing ' . $def['capability'] );
 			return $this->tool_error( $id, sprintf( 'Permission denied: the connected user lacks the "%s" capability.', $def['capability'] ) );
 		}
 
 		try {
 			$result = call_user_func( $def['callback'], $args );
+			$audit->record( $name, 'ok', $args );
 			return $this->result(
 				$id,
 				array(
@@ -205,7 +217,9 @@ class MCP_Server {
 				)
 			);
 		} catch ( \Throwable $e ) {
-			return $this->tool_error( $id, $e->getMessage() );
+			$message = $this->scrub( $e->getMessage() );
+			$audit->record( $name, 'error', $args, $message );
+			return $this->tool_error( $id, $message );
 		}
 	}
 
