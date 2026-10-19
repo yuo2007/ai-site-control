@@ -1,8 +1,8 @@
 === WP MCP Control ===
-Contributors: you
-Tags: mcp, ai, claude, chatgpt, automation, woocommerce, polylang
+Contributors: YOUR-WORDPRESS-ORG-USERNAME
+Tags: mcp, ai, automation, api, content-management
 Requires at least: 5.8
-Tested up to: 6.6
+Tested up to: 7.1
 Requires PHP: 7.0
 Stable tag: 0.8.0
 License: GPLv2 or later
@@ -73,9 +73,9 @@ Such a filter normally lives in one of three places, worth checking in this orde
 
 Ask for the user-initiated agent to be removed from the block list by name. Blocking it is rarely deliberate — these lists are usually copied wholesale from a published crawler list, without noticing that one entry on it is how your own integrations reach the site.
 
-= Does the plugin update itself? =
+= How do I update the plugin? =
 
-Yes, from 0.6.0 on. New versions appear under Dashboard → Updates and on the Plugins screen with the ordinary "Update now" button, the same as a plugin from the directory. Releases are served from GitHub using the "Update URI" header WordPress has supported since 5.8; nothing extra has to be installed. Version 0.6.0 itself still has to be installed by hand once, because the update code has to be on the site before WordPress can be told where to look.
+Through WordPress, like any other plugin from the directory: new versions appear under Dashboard → Updates and on the Plugins screen. Nothing has to be configured and nothing is fetched from anywhere but WordPress.org.
 
 == Security ==
 
@@ -93,6 +93,8 @@ Note: the configured user acts with its full WordPress capabilities. Use the lea
 * WPML integration.
 
 == Changelog ==
+
+Entries before this plugin joined the directory describe releases that were distributed from GitHub; that mechanism is not part of the directory version, which updates through WordPress.org like any other plugin.
 
 = 0.8.0 =
 * Added: **read-only mode**. One checkbox and every tool that changes anything — creating, editing, deleting, installing, configuring — disappears from the client's tool list and is refused if called anyway. Worth switching on whenever a client is connected for research or reporting rather than editing. Withholding a tool works better than refusing it: a model that can see `delete_post` keeps reaching for it and reporting failures at you, while one that cannot see it never raises the subject.
