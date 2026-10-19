@@ -1,0 +1,16 @@
+# Everything listed here is kept out of the distributed ZIP.
+# Used by .github/workflows/release.yml (rsync --exclude-from).
+.git
+.github
+.gitignore
+.distignore
+.distbuild
+notes.md
+*.zip
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
+node_modules
+vendor

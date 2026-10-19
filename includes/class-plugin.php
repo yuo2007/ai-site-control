@@ -45,6 +45,13 @@ final class Plugin {
 	public $oauth;
 
 	/**
+	 * Update checker.
+	 *
+	 * @var Updater
+	 */
+	public $updater;
+
+	/**
 	 * Get the singleton instance.
 	 *
 	 * @return Plugin
@@ -66,6 +73,11 @@ final class Plugin {
 		$this->oauth = new OAuth();
 		$this->oauth->register();
 
+		// Registered on every request, not just admin: wp_update_plugins()
+		// also runs from cron, which fires on the front end.
+		$this->updater = new Updater();
+		$this->updater->register();
+
 		add_action( 'plugins_loaded', array( $this, 'register_tools' ), 20 );
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 
@@ -82,6 +94,7 @@ final class Plugin {
 	private function includes() {
 		require_once WPMCP_DIR . 'includes/class-auth.php';
 		require_once WPMCP_DIR . 'includes/class-oauth.php';
+		require_once WPMCP_DIR . 'includes/class-updater.php';
 		require_once WPMCP_DIR . 'includes/class-tool-registry.php';
 		require_once WPMCP_DIR . 'includes/class-mcp-server.php';
 		require_once WPMCP_DIR . 'includes/class-rest-controller.php';

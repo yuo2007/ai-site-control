@@ -1,5 +1,7 @@
 # Build artifacts
 *.zip
+.distbuild/
+notes.md
 
 # OS / editor
 .DS_Store

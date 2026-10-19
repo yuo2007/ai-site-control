@@ -2,6 +2,7 @@
 /**
  * Plugin Name:       WP MCP Control
  * Plugin URI:        https://github.com/yuo2007/ultimate-mcp-wordpress
+ * Update URI:        https://github.com/yuo2007/ultimate-mcp-wordpress
  * Description:        Free, open Model Context Protocol (MCP) server for WordPress. Lets Claude, ChatGPT and other MCP clients manage posts, media, users, taxonomies, comments, options, plugins, themes, WooCommerce and Polylang translations.
  * Version:           0.6.0
  * Requires at least: 5.8
@@ -26,6 +27,20 @@ define( 'WPMCP_URL', plugin_dir_url( __FILE__ ) );
 define( 'WPMCP_NAMESPACE', 'wp-mcp/v1' );
 define( 'WPMCP_MIN_WP', '5.8' );
 define( 'WPMCP_MIN_PHP', '7.0' );
+
+/**
+ * Where updates come from.
+ *
+ * WPMCP_UPDATE_URI must stay identical to the "Update URI" header: WordPress
+ * reads the header to decide which update_plugins_{hostname} filter to fire,
+ * and Updater reads the constant to hook the matching one. The header also
+ * stops WordPress.org from answering for this plugin, so a same-named plugin
+ * in the directory can never push its own version onto these sites.
+ */
+define( 'WPMCP_UPDATE_URI', 'https://github.com/yuo2007/ultimate-mcp-wordpress' );
+define( 'WPMCP_GH_REPO', 'yuo2007/ultimate-mcp-wordpress' );
+define( 'WPMCP_SLUG', 'wp-mcp-control' );
+define( 'WPMCP_BASENAME', plugin_basename( __FILE__ ) );
 
 /**
  * Check that the stack is new enough to run the plugin.
