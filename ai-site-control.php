@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       AI Site Control
- * Plugin URI:        https://github.com/yuo2007/ultimate-mcp-wordpress
+ * Plugin URI:        https://github.com/yuo2007/ai-site-control
  * Description:        Free, open Model Context Protocol (MCP) server for WordPress. Lets Claude, ChatGPT and other MCP clients manage posts, media, users, taxonomies, comments, options, plugins, themes, WooCommerce and Polylang translations.
  * Version:           0.8.0
  * Requires at least: 5.8
