@@ -316,6 +316,82 @@ class Admin {
 				appear at the top of this page, each with a Copy button.
 			</p>
 
+			<?php
+			$ua_probe = sprintf(
+				'curl -A "Claude-User/1.0 (+Claude-User@anthropic.com)" -o /dev/null -w "%%{http_code}\n" %s',
+				home_url( '/' )
+			);
+			?>
+			<h2>The client signs in, then says the server refused it</h2>
+			<p style="max-width:880px;margin-top:0;">
+				If Claude completes the WordPress login and then reports that the server
+				<em>rejected its request</em>, the cause is almost never this plugin. It is a filter in
+				front of WordPress that blocks AI user agents.
+			</p>
+			<p style="max-width:880px;">
+				The sign-in runs in <strong>your browser</strong>, so it passes. The MCP request that follows
+				is made by the <strong>AI provider's own servers</strong>, carrying their own user agent — and
+				that is what gets blocked. Hence the confusing &ldquo;you signed in, but then it was refused&rdquo;.
+			</p>
+			<p style="max-width:880px;">
+				Every provider uses <strong>separate</strong> agents for crawling and for requests a person
+				actually asked for. Only the second kind has to be allowed:
+			</p>
+			<table class="widefat striped" style="max-width:880px;">
+				<thead>
+					<tr>
+						<th>Client</th>
+						<th>Needed here — allow</th>
+						<th>Crawler — may stay blocked</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr><td>Claude</td><td><code>Claude-User</code></td><td><code>ClaudeBot</code>, <code>Claude-SearchBot</code></td></tr>
+					<tr><td>ChatGPT</td><td><code>ChatGPT-User</code></td><td><code>GPTBot</code>, <code>OAI-SearchBot</code></td></tr>
+					<tr><td>Perplexity</td><td><code>Perplexity-User</code></td><td><code>PerplexityBot</code></td></tr>
+				</tbody>
+			</table>
+			<p style="max-width:880px;">
+				Allowing the user-initiated agent does <strong>not</strong> open the site to AI training
+				crawlers. Those arrive under the other names, and you can keep blocking every one of them.
+			</p>
+
+			<p style="max-width:880px;margin-bottom:4px;">To check this site from any machine with <code>curl</code>:</p>
+			<p style="display:flex;gap:6px;align-items:center;max-width:880px;">
+				<input type="text" readonly style="flex:1;font-family:monospace;" value="<?php echo esc_attr( $ua_probe ); ?>" onclick="this.select()">
+				<button type="button" class="button wpmcp-copy2" data-copy="<?php echo esc_attr( $ua_probe ); ?>">Copy</button>
+			</p>
+			<p class="description" style="max-width:880px;margin-top:0;">
+				<strong>200</strong> means nothing is blocking. A <strong>403</strong>, <strong>405</strong>,
+				<strong>406</strong> or <strong>418</strong> — especially as a plain HTML error page rather than
+				WordPress output — means the request never reached WordPress at all. Compare against the same
+				command without the <code>-A</code> option: if that one succeeds, the user agent is the only
+				difference, and the block is confirmed.
+			</p>
+
+			<p style="max-width:880px;margin-bottom:4px;">Where such a filter normally lives, worth checking in this order:</p>
+			<ul style="max-width:880px;list-style:disc;margin-left:22px;">
+				<li>
+					<strong>Your hosting control panel</strong> — an option along the lines of &ldquo;Block AI
+					bots&rdquo;, &ldquo;AI crawler protection&rdquo; or &ldquo;Anti-scraping&rdquo;. If you cannot
+					find one, ask support: on shared hosting the rule sits in the server's own nginx or Apache
+					config, where no plugin and no <code>.htaccess</code> of yours can override it.
+				</li>
+				<li>
+					<strong>Cloudflare</strong> or a similar CDN — Security &rarr; Bots &rarr; &ldquo;Block AI
+					Scrapers and Crawlers&rdquo;, or a custom WAF rule matching the user agent.
+				</li>
+				<li>
+					<strong>A security or AI-blocking plugin</strong> — Wordfence and friends can filter by user
+					agent, and &ldquo;block AI&rdquo; plugins add these names by default.
+				</li>
+			</ul>
+			<p class="description" style="max-width:880px;">
+				Ask for the user-initiated agent to be removed from the block list by name. Blocking it is rarely
+				deliberate: these lists are usually copied wholesale from a published crawler list, without
+				noticing that one entry on it is how your own integrations reach the site.
+			</p>
+
 			<script>
 			( function () {
 				document.querySelectorAll( '.wpmcp-copy2' ).forEach( function ( btn ) {

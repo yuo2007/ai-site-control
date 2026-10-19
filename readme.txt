@@ -4,7 +4,7 @@ Tags: mcp, ai, claude, chatgpt, automation, woocommerce, polylang
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.0
-Stable tag: 0.6.0
+Stable tag: 0.6.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -47,6 +47,36 @@ Token (Claude Desktop, Claude Code, scripts):
 * On the settings page choose "Act as user", then "Generate / rotate token".
 * Copy the ready-made connection URL or the Claude Desktop config shown at the top of the page.
 
+== Frequently Asked Questions ==
+
+= The client signs in, then says the server refused its request =
+
+Almost always a filter in front of WordPress that blocks AI user agents, not this plugin.
+
+The sign-in happens in your browser, so it passes. The MCP request that follows is made by the AI provider's own servers, carrying their own user agent — and that is what gets blocked. Hence the confusing "you signed in, but then it was refused".
+
+Every provider uses separate agents for crawling and for requests a person actually asked for, and only the second kind has to be allowed:
+
+* Claude — allow `Claude-User`; `ClaudeBot` and `Claude-SearchBot` may stay blocked.
+* ChatGPT — allow `ChatGPT-User`; `GPTBot` and `OAI-SearchBot` may stay blocked.
+* Perplexity — allow `Perplexity-User`; `PerplexityBot` may stay blocked.
+
+Allowing the user-initiated agent does not open your site to AI training crawlers. Those arrive under the other names, and you can keep blocking every one of them.
+
+To check your site from any machine with curl:
+
+`curl -A "Claude-User/1.0 (+Claude-User@anthropic.com)" -o /dev/null -w "%{http_code}\n" https://example.com/`
+
+200 means nothing is blocking. A 403, 405, 406 or 418 — especially as a plain HTML error page rather than WordPress output — means the request never reached WordPress. Run the same command without `-A` to confirm the user agent is the only difference.
+
+Such a filter normally lives in one of three places, worth checking in this order: your hosting control panel (an option like "Block AI bots" or "AI crawler protection" — on shared hosting the rule is in the server's own nginx or Apache config, so you may have to ask support, and no plugin or .htaccess of yours can override it); Cloudflare or a similar CDN (Security → Bots → "Block AI Scrapers and Crawlers", or a custom WAF rule); or a security or "AI blocker" plugin that filters by user agent.
+
+Ask for the user-initiated agent to be removed from the block list by name. Blocking it is rarely deliberate — these lists are usually copied wholesale from a published crawler list, without noticing that one entry on it is how your own integrations reach the site.
+
+= Does the plugin update itself? =
+
+Yes, from 0.6.0 on. New versions appear under Dashboard → Updates and on the Plugins screen with the ordinary "Update now" button, the same as a plugin from the directory. Releases are served from GitHub using the "Update URI" header WordPress has supported since 5.8; nothing extra has to be installed. Version 0.6.0 itself still has to be installed by hand once, because the update code has to be on the site before WordPress can be told where to look.
+
 == Security ==
 
 * The token is stored hashed (never in plaintext) and compared in constant time.
@@ -60,11 +90,14 @@ Note: the configured user acts with its full WordPress capabilities. Use the lea
 
 == Roadmap ==
 
-* Native OAuth 2.0 so claude.ai web "Custom Connectors" can connect without a bridge or a URL token.
 * WPML integration.
 * Per-tool audit log.
 
 == Changelog ==
+
+= 0.6.1 =
+* Added: an explanation of AI user-agent blocking, on the settings page and in the FAQ. A host or CDN that blocks AI bots makes the connection fail in a way that looks like a plugin fault: the WordPress sign-in succeeds, because it happens in your browser, and then the MCP request is refused, because that one comes from the AI provider's servers under their own user agent. The new section names the agent to allow for Claude, ChatGPT and Perplexity, makes the point that it is not the crawler agent and that those can stay blocked, gives a one-line curl command to confirm the block, and lists where such a rule usually lives.
+* Changed: dropped "native OAuth 2.0" from the roadmap. It shipped in 0.4.0.
 
 = 0.6.0 =
 * Added: one-click updates. The plugin now reports new versions to WordPress itself, so Dashboard → Updates and the Plugins screen offer "Update now" exactly as they do for a plugin from the directory — no more uploading a ZIP by hand, and no helper plugin to install. Uses the "Update URI" header that WordPress has supported since 5.8; releases are served from GitHub. Note that this release still has to be installed manually once, because the update code has to be on the site before WordPress can offer anything.
