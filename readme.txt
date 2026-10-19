@@ -35,7 +35,7 @@ WordPress 5.8 or newer and PHP 7.0 or newer. Everything works the same on old an
 
 1. Install from Plugins → Add New, or copy the `ai-site-control` folder to `wp-content/plugins/` and activate it.
 2. Make sure Settings → Permalinks is set to any option other than "Plain".
-3. Go to Settings → MCP Control and enable the server.
+3. Go to Settings → AI Site Control and enable the server.
 
 Then connect a client one of two ways:
 

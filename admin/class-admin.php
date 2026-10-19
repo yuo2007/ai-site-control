@@ -33,7 +33,7 @@ class Admin {
 	public function menu() {
 		add_options_page(
 			'AI Site Control',
-			'MCP Control',
+			'AI Site Control',
 			'manage_options',
 			'ai-site-control',
 			array( $this, 'render' )
