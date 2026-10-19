@@ -39,6 +39,13 @@ class OAuth {
 	const RT_TTL       = 15552000;       // 180 days.
 
 	/**
+	 * Ceilings on anonymous registration. A legitimate client registers once.
+	 */
+	const MAX_CLIENTS               = 200;
+	const MAX_REGISTRATIONS_PER_HOUR = 10;
+	const MAX_REGISTRATION_BYTES     = 8192;
+
+	/**
 	 * Register hooks.
 	 */
 	public function register() {
@@ -213,24 +220,30 @@ class OAuth {
 			$this->no_content();
 		}
 
-		$body = json_decode( $this->raw_body(), true );
+		// Registration is necessarily open — a client has to be able to
+		// introduce itself before anyone can sign in — but open means anonymous
+		// writes to an option, so it needs a ceiling.
+		$this->throttle_registration();
+
+		$raw = $this->raw_body();
+		if ( strlen( $raw ) > self::MAX_REGISTRATION_BYTES ) {
+			$this->send_json( array( 'error' => 'invalid_client_metadata' ), 413 );
+		}
+
+		$body = json_decode( $raw, true );
 		if ( ! is_array( $body ) ) {
 			$this->send_json( array( 'error' => 'invalid_client_metadata' ), 400 );
 		}
 
 		$redirect_uris = isset( $body['redirect_uris'] ) ? (array) $body['redirect_uris'] : array();
+		$redirect_uris = array_slice( $redirect_uris, 0, 10 );
 		$redirect_uris = array_values( array_filter( array_map( array( $this, 'clean_redirect_uri' ), $redirect_uris ) ) );
 		if ( empty( $redirect_uris ) ) {
 			$this->send_json( array( 'error' => 'invalid_redirect_uri' ), 400 );
 		}
 
 		$client_id = 'wpmcp-' . bin2hex( random_bytes( 16 ) );
-		$clients   = (array) get_option( self::CLIENTS, array() );
-
-		// Keep the store bounded; drop the oldest when it grows large.
-		if ( count( $clients ) >= 200 ) {
-			$clients = array_slice( $clients, -100, null, true );
-		}
+		$clients   = $this->make_room( (array) get_option( self::CLIENTS, array() ) );
 
 		$clients[ $client_id ] = array(
 			'redirect_uris' => $redirect_uris,
@@ -250,6 +263,98 @@ class OAuth {
 			),
 			201
 		);
+	}
+
+	/**
+	 * Refuse a flood of registrations from one address.
+	 *
+	 * A real client registers once. Anything registering repeatedly is either
+	 * broken or filling the store on purpose, and the store is an option every
+	 * registration rewrites.
+	 */
+	private function throttle_registration() {
+		$ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : 'unknown';
+		$key = 'wpmcp_reg_' . md5( $ip );
+
+		$count = (int) get_transient( $key );
+		if ( $count >= self::MAX_REGISTRATIONS_PER_HOUR ) {
+			if ( ! headers_sent() ) {
+				header( 'Retry-After: 3600' );
+			}
+			$this->send_json( array( 'error' => 'too_many_requests' ), 429 );
+		}
+
+		set_transient( $key, $count + 1, HOUR_IN_SECONDS );
+	}
+
+	/**
+	 * Make room for one more client without evicting a working connection.
+	 *
+	 * Capping the store by dropping whatever sat at the front of the array
+	 * meant a burst of junk registrations could push out the entry a real
+	 * connector depends on. Its client_id then resolves to nothing, /authorize
+	 * answers "Unknown OAuth client", and the owner has to set the connection
+	 * up again with no clue why it broke.
+	 *
+	 * Clients that still hold a token are never dropped. Everything else is
+	 * discarded oldest-first, and only once it has had long enough to complete
+	 * the sign-in it registered for.
+	 *
+	 * @param array $clients Current store.
+	 * @return array
+	 */
+	private function make_room( array $clients ) {
+		if ( count( $clients ) < self::MAX_CLIENTS ) {
+			return $clients;
+		}
+
+		$in_use = $this->clients_with_tokens();
+		$cutoff = time() - DAY_IN_SECONDS;
+
+		$disposable = array();
+		foreach ( $clients as $id => $client ) {
+			if ( isset( $in_use[ $id ] ) ) {
+				continue;
+			}
+			if ( isset( $client['created'] ) && (int) $client['created'] > $cutoff ) {
+				continue;
+			}
+			$disposable[ $id ] = isset( $client['created'] ) ? (int) $client['created'] : 0;
+		}
+
+		asort( $disposable );
+
+		foreach ( array_keys( $disposable ) as $id ) {
+			if ( count( $clients ) < self::MAX_CLIENTS ) {
+				break;
+			}
+			unset( $clients[ $id ] );
+		}
+
+		// Everything left is either in use or too new to judge. Refusing beats
+		// evicting a live connection.
+		if ( count( $clients ) >= self::MAX_CLIENTS ) {
+			$this->send_json( array( 'error' => 'too_many_requests' ), 429 );
+		}
+
+		return $clients;
+	}
+
+	/**
+	 * Client IDs that currently hold an access or refresh token.
+	 *
+	 * @return array<string, bool>
+	 */
+	private function clients_with_tokens() {
+		$in_use = array();
+		foreach ( array( self::TOKENS, self::REFRESH ) as $store ) {
+			foreach ( (array) get_option( $store, array() ) as $rec ) {
+				if ( ! empty( $rec['client_id'] ) && isset( $rec['expires'] ) && (int) $rec['expires'] >= time() ) {
+					$in_use[ (string) $rec['client_id'] ] = true;
+				}
+			}
+		}
+		return $in_use;
 	}
 
 	/* --------------------------------------------------------------------- */
@@ -507,6 +612,18 @@ class OAuth {
 			$this->send_json( array( 'error' => 'invalid_grant' ), 400 );
 		}
 
+		// A refresh token outlives most changes to an account: it is good for
+		// 180 days, so without this an account demoted or stripped of its
+		// permissions keeps minting working access tokens until it expires.
+		// Per-tool capability checks still apply, but the connection should
+		// not survive the authority it was granted under.
+		$user = get_userdata( (int) $rec['user_id'] );
+		if ( ! $user || ! $this->user_may_connect( $user ) ) {
+			unset( $store[ $hash ] );
+			update_option( self::REFRESH, $store, false );
+			$this->send_json( array( 'error' => 'invalid_grant' ), 400 );
+		}
+
 		// Rotate: the presented refresh token is consumed.
 		unset( $store[ $hash ] );
 		update_option( self::REFRESH, $store, false );
@@ -625,6 +742,116 @@ class OAuth {
 			}
 		}
 		return $store;
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* Connection management                                                  */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * Live connections, one row per client and account.
+	 *
+	 * Until now a connection could be granted but never withdrawn: there was
+	 * nothing listing what had been authorized and no way to cut it off short
+	 * of changing the WordPress password. An access token is good for 30 days
+	 * and a refresh token for 180.
+	 *
+	 * @return array
+	 */
+	public function connections() {
+		$clients = (array) get_option( self::CLIENTS, array() );
+		$rows    = array();
+		$now     = time();
+
+		foreach ( array( self::TOKENS => 'access', self::REFRESH => 'refresh' ) as $store => $kind ) {
+			foreach ( (array) get_option( $store, array() ) as $rec ) {
+				if ( empty( $rec['client_id'] ) || empty( $rec['user_id'] ) || (int) $rec['expires'] < $now ) {
+					continue;
+				}
+				$key = $rec['client_id'] . '|' . (int) $rec['user_id'];
+
+				if ( ! isset( $rows[ $key ] ) ) {
+					$user   = get_userdata( (int) $rec['user_id'] );
+					$client = isset( $clients[ $rec['client_id'] ] ) ? $clients[ $rec['client_id'] ] : array();
+					$rows[ $key ] = array(
+						'client_id'   => (string) $rec['client_id'],
+						'client_name' => empty( $client['client_name'] ) ? __( 'Unnamed client', 'wp-mcp-control' ) : $client['client_name'],
+						'destination' => empty( $client['redirect_uris'][0] ) ? '' : (string) wp_parse_url( $client['redirect_uris'][0], PHP_URL_HOST ),
+						'user_id'     => (int) $rec['user_id'],
+						'user_login'  => $user ? $user->user_login : __( 'deleted account', 'wp-mcp-control' ),
+						'access_until'  => 0,
+						'refresh_until' => 0,
+					);
+				}
+
+				$field = 'access' === $kind ? 'access_until' : 'refresh_until';
+				$rows[ $key ][ $field ] = max( $rows[ $key ][ $field ], (int) $rec['expires'] );
+			}
+		}
+
+		return array_values( $rows );
+	}
+
+	/**
+	 * Withdraw a connection: its tokens now, and its registration with them.
+	 *
+	 * @param string $client_id Client to revoke.
+	 * @param int    $user_id   Account to revoke it for, or 0 for every account.
+	 * @return int Number of tokens removed.
+	 */
+	public function revoke( $client_id, $user_id = 0 ) {
+		$client_id = (string) $client_id;
+		$user_id   = (int) $user_id;
+		$removed   = 0;
+
+		foreach ( array( self::TOKENS, self::REFRESH ) as $store ) {
+			$records = (array) get_option( $store, array() );
+			foreach ( $records as $hash => $rec ) {
+				if ( empty( $rec['client_id'] ) || (string) $rec['client_id'] !== $client_id ) {
+					continue;
+				}
+				if ( $user_id && (int) $rec['user_id'] !== $user_id ) {
+					continue;
+				}
+				unset( $records[ $hash ] );
+				$removed++;
+			}
+			update_option( $store, $records, false );
+		}
+
+		// With no tokens left the registration is only a way back in under the
+		// same name, so drop it too and make the client register afresh.
+		if ( ! $this->client_has_tokens( $client_id ) ) {
+			$clients = (array) get_option( self::CLIENTS, array() );
+			unset( $clients[ $client_id ] );
+			update_option( self::CLIENTS, $clients, false );
+		}
+
+		return $removed;
+	}
+
+	/**
+	 * Withdraw every connection.
+	 *
+	 * @return int Number of tokens removed.
+	 */
+	public function revoke_all() {
+		$removed = count( (array) get_option( self::TOKENS, array() ) ) + count( (array) get_option( self::REFRESH, array() ) );
+		update_option( self::TOKENS, array(), false );
+		update_option( self::REFRESH, array(), false );
+		update_option( self::CLIENTS, array(), false );
+		return $removed;
+	}
+
+	/**
+	 * Whether a client still holds any unexpired token.
+	 *
+	 * @param string $client_id Client ID.
+	 * @return bool
+	 */
+	private function client_has_tokens( $client_id ) {
+		$in_use = $this->clients_with_tokens();
+		return isset( $in_use[ (string) $client_id ] );
 	}
 
 	/* --------------------------------------------------------------------- */

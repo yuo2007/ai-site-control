@@ -258,12 +258,56 @@ class MCP_Server {
 				'content' => array(
 					array(
 						'type' => 'text',
-						'text' => 'Error: ' . $message,
+						'text' => 'Error: ' . $this->scrub( $message ),
 					),
 				),
 				'isError' => true,
 			)
 		);
+	}
+
+	/**
+	 * Strip server internals out of a message before it leaves the site.
+	 *
+	 * Tool failures are reported verbatim so the model can act on them, but an
+	 * exception raised deep in WordPress carries absolute paths, and a database
+	 * error carries the query. Neither helps the caller, both describe the
+	 * server to a third party, and the message travels on into an external
+	 * model's context and whatever logs sit behind it.
+	 *
+	 * @param string $message Raw message.
+	 * @return string
+	 */
+	private function scrub( $message ) {
+		$message = (string) $message;
+
+		$paths = array( ABSPATH, WP_CONTENT_DIR, WPMCP_DIR );
+		if ( defined( 'WP_PLUGIN_DIR' ) ) {
+			$paths[] = WP_PLUGIN_DIR;
+		}
+
+		// Longest first, so the plugin directory is not half-replaced by ABSPATH.
+		usort(
+			$paths,
+			static function ( $a, $b ) {
+				return strlen( $b ) - strlen( $a );
+			}
+		);
+
+		foreach ( $paths as $path ) {
+			$path = (string) $path;
+			if ( '' === $path ) {
+				continue;
+			}
+			$message = str_replace( array( $path, wp_normalize_path( $path ) ), '…/', $message );
+		}
+
+		// SQL reaches here through wpdb's error text, which quotes the query.
+		if ( preg_match( '/\b(SELECT|INSERT|UPDATE|DELETE|ALTER|DROP)\b.+\bFROM\b|\bwp_[a-z_]+\b/i', $message ) ) {
+			return 'The operation failed with a database error. Check the site error log for details.';
+		}
+
+		return $message;
 	}
 }
 

@@ -69,6 +69,32 @@ class Admin {
 			add_settings_error( 'wpmcp', 'saved', 'Settings saved.', 'updated' );
 		}
 
+		if ( 'revoke' === $action ) {
+			$client_id = isset( $_POST['client_id'] ) ? sanitize_text_field( wp_unslash( $_POST['client_id'] ) ) : '';
+			$for_user  = isset( $_POST['revoke_user'] ) ? (int) $_POST['revoke_user'] : 0;
+			if ( '' === $client_id ) {
+				add_settings_error( 'wpmcp', 'norevoke', 'Nothing to revoke.', 'error' );
+			} else {
+				$removed = wpmcp()->oauth->revoke( $client_id, $for_user );
+				add_settings_error(
+					'wpmcp',
+					'revoked',
+					sprintf( 'Connection revoked — %d token(s) removed. The client must sign in again to reconnect.', $removed ),
+					'updated'
+				);
+			}
+		}
+
+		if ( 'revoke_all' === $action ) {
+			$removed = wpmcp()->oauth->revoke_all();
+			add_settings_error(
+				'wpmcp',
+				'revoked_all',
+				sprintf( 'All connections revoked — %d token(s) removed.', $removed ),
+				'updated'
+			);
+		}
+
 		if ( 'rotate' === $action ) {
 			$user_id = isset( $_POST['user_id'] ) ? (int) $_POST['user_id'] : 0;
 			if ( ! $user_id ) {
@@ -288,6 +314,56 @@ class Admin {
 					<button type="submit" name="wpmcp_action" value="rotate" class="button">Generate / rotate token</button>
 				</p>
 			</form>
+
+			<?php $connections = wpmcp()->oauth->connections(); ?>
+			<h2>Active connections</h2>
+			<?php if ( empty( $connections ) ) : ?>
+				<p class="description">No client has signed in with WordPress yet. Connections made that way appear here and can be withdrawn at any time.</p>
+			<?php else : ?>
+				<p class="description" style="max-width:880px;">
+					Each row is a client that signed in and was approved. Revoking drops its tokens immediately and
+					removes its registration, so it has to sign in again from scratch. Revoke anything you do not
+					recognise — and anything you have stopped using, since a refresh token stays valid for 180 days.
+				</p>
+				<table class="widefat striped" style="max-width:880px;">
+					<thead>
+						<tr>
+							<th>Client</th>
+							<th>Acts as</th>
+							<th>Access expires</th>
+							<th>Can renew until</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+					<?php foreach ( $connections as $c ) : ?>
+						<tr>
+							<td>
+								<strong><?php echo esc_html( $c['client_name'] ); ?></strong>
+								<?php if ( $c['destination'] ) : ?>
+									<br><span class="description"><?php echo esc_html( $c['destination'] ); ?></span>
+								<?php endif; ?>
+							</td>
+							<td><?php echo esc_html( $c['user_login'] ); ?></td>
+							<td><?php echo $c['access_until'] ? esc_html( date_i18n( 'Y-m-d', $c['access_until'] ) ) : '&mdash;'; ?></td>
+							<td><?php echo $c['refresh_until'] ? esc_html( date_i18n( 'Y-m-d', $c['refresh_until'] ) ) : '&mdash;'; ?></td>
+							<td style="text-align:right;">
+								<form method="post" style="margin:0;">
+									<?php wp_nonce_field( 'wpmcp_settings' ); ?>
+									<input type="hidden" name="client_id" value="<?php echo esc_attr( $c['client_id'] ); ?>">
+									<input type="hidden" name="revoke_user" value="<?php echo esc_attr( $c['user_id'] ); ?>">
+									<button type="submit" name="wpmcp_action" value="revoke" class="button button-small">Revoke</button>
+								</form>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+				<form method="post" style="margin-top:10px;">
+					<?php wp_nonce_field( 'wpmcp_settings' ); ?>
+					<button type="submit" name="wpmcp_action" value="revoke_all" class="button">Revoke all connections</button>
+				</form>
+			<?php endif; ?>
 
 			<h2>Connect a client</h2>
 

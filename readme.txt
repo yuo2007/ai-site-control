@@ -4,7 +4,7 @@ Tags: mcp, ai, claude, chatgpt, automation, woocommerce, polylang
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.0
-Stable tag: 0.6.3
+Stable tag: 0.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -94,6 +94,12 @@ Note: the configured user acts with its full WordPress capabilities. Use the lea
 * Per-tool audit log.
 
 == Changelog ==
+
+= 0.7.0 =
+* Added: **Active connections** on the settings page. Every client that signed in with WordPress is listed with the account it acts as and when its access expires, and each can be revoked on the spot — which drops its tokens and removes its registration, so it has to sign in again from scratch. There was previously no way to see what had been authorized and no way to withdraw it: an access token lasts 30 days and a refresh token 180, so short of changing the WordPress password a connection could not be cut off.
+* Security: refreshing an access token now re-checks that the account is still permitted to connect. A refresh token is good for 180 days, so an account that was demoted or stripped of its permissions kept minting working access tokens until it expired.
+* Security: client registration is rate-limited to 10 per hour per address, the request body is capped, and the client store no longer evicts a connection that still holds a token. Registration has to stay open for a client to introduce itself, but it is an anonymous write to an option — and the old "drop the oldest when full" rule meant a burst of junk registrations could push out the entry a working connector depended on, breaking it with nothing to explain why.
+* Security: tool error messages are stripped of server internals before they leave the site. Failures are still reported so the model can act on them, but an exception raised deep in WordPress carries absolute paths and a database error carries the query — neither helps the caller, and both travel on into an external model's context.
 
 = 0.6.3 =
 * Fixed: new versions took up to twelve hours to appear. The update check cached its answer for that long and only the "Check again" button went past it, so opening Dashboard → Updates could report "up to date" against a half-day-old answer — which reads as a broken feature, not as caching. How stale an answer may be now depends on why it is being asked for: no older than 60 seconds on the Updates screen, matching what WordPress uses for its own data there, 15 minutes for the background checks that fire on other admin pages, and always refetched when "Check again" is pressed. A cached failure is still retried after 30 minutes, so an outage cannot pin a site to an old version.
