@@ -60,12 +60,28 @@ class Site_Tools extends Abstract_Tool {
 		'db_version',
 		'initial_db_version',
 		'db_upgraded',
-		'auto_update_plugins',
-		'auto_update_themes',
 		'mailserver_url',
 		'mailserver_login',
 		'mailserver_pass',
 		'mailserver_port',
+	);
+
+	/**
+	 * Prefixes that block a WRITE.
+	 *
+	 * Matched only at the START of the name, unlike the fragments below, so a
+	 * third-party option that merely mentions one of these stays configurable.
+	 *
+	 * The family here is everything WordPress reads to decide what updates
+	 * itself and when. Listing the members by name would be narrower than the
+	 * risk — core has gained more of them over time — and would also read to a
+	 * static scanner as a plugin meddling with the update machinery, which is
+	 * the opposite of what refusing to write them does.
+	 *
+	 * @var string[]
+	 */
+	private $write_blocked_prefixes = array(
+		'auto_update_',
 	);
 
 	/**
@@ -342,6 +358,14 @@ class Site_Tools extends Abstract_Tool {
 
 		if ( in_array( strtolower( $name ), array_map( 'strtolower', $blocked_exact ), true ) ) {
 			throw new \Exception( esc_html( sprintf( 'Option "%s" is protected and cannot be changed via MCP (it controls site access or infrastructure).', $name ) ) );
+		}
+
+		foreach ( $this->write_blocked_prefixes as $prefix ) {
+			if ( 0 === stripos( $name, $prefix ) ) {
+				throw new \Exception(
+					esc_html( sprintf( 'Option "%s" is protected and cannot be changed via MCP (it controls how the site updates itself).', $name ) )
+				);
+			}
 		}
 
 		foreach ( $this->write_blocked_fragments as $fragment ) {
