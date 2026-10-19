@@ -22,8 +22,8 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME#v}"
-          HEADER=$(sed -n 's/^ \* Version:[[:space:]]*\(.*\)$/\1/p' wp-mcp-control.php | head -n1)
-          CONST=$(sed -n "s/^define( 'WPMCP_VERSION', '\(.*\)' );$/\1/p" wp-mcp-control.php | head -n1)
+          HEADER=$(sed -n 's/^ \* Version:[[:space:]]*\(.*\)$/\1/p' ai-site-control.php | head -n1)
+          CONST=$(sed -n "s/^define( 'WPMCP_VERSION', '\(.*\)' );$/\1/p" ai-site-control.php | head -n1)
           STABLE=$(sed -n 's/^Stable tag:[[:space:]]*\(.*\)$/\1/p' readme.txt | head -n1)
           echo "tag=$TAG header=$HEADER const=$CONST stable=$STABLE"
           # A tag that disagrees with the header would have every site offered
@@ -42,12 +42,12 @@ jobs:
           set -euo pipefail
           # The folder inside the archive decides where WordPress installs the
           # plugin, so it has to be the plugin slug and nothing else.
-          mkdir -p .distbuild/wp-mcp-control
-          rsync -a --exclude-from=.distignore ./ .distbuild/wp-mcp-control/
+          mkdir -p .distbuild/ai-site-control
+          rsync -a --exclude-from=.distignore ./ .distbuild/ai-site-control/
           cd .distbuild
-          zip -qr ../wp-mcp-control.zip wp-mcp-control
+          zip -qr ../ai-site-control.zip ai-site-control
           cd ..
-          unzip -l wp-mcp-control.zip
+          unzip -l ai-site-control.zip
 
       - name: Collect the release notes from readme.txt
         run: |
@@ -68,6 +68,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" wp-mcp-control.zip \
+          gh release create "$GITHUB_REF_NAME" ai-site-control.zip \
             --title "$GITHUB_REF_NAME" \
             --notes-file notes.md

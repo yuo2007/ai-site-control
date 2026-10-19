@@ -103,7 +103,9 @@ class OAuth {
 	 * @param \WP $wp Environment (unused).
 	 */
 	public function handle_request( $wp ) {
-		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		// esc_url_raw, not sanitize_text_field: the latter strips %XX octets,
+		// which would mangle an encoded path before it is even matched.
+		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
 		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
 		$path = '/' . ltrim( $path, '/' );
 
@@ -160,7 +162,7 @@ class OAuth {
 		$s = wpmcp()->auth->settings();
 		$this->send_json(
 			array(
-				'plugin'        => 'wp-mcp-control',
+				'plugin'        => 'ai-site-control',
 				'version'       => WPMCP_VERSION,
 				'enabled'       => ! empty( $s['enabled'] ),
 				'oauth'         => true,
@@ -376,12 +378,12 @@ class OAuth {
 
 		$client = $this->get_client( $client_id );
 		if ( ! $client ) {
-			wp_die( esc_html__( 'Unknown OAuth client.', 'wp-mcp-control' ), '', array( 'response' => 400 ) );
+			wp_die( esc_html__( 'Unknown OAuth client.', 'ai-site-control' ), '', array( 'response' => 400 ) );
 		}
 		// redirect_uri must exactly match one the client registered. Until it is
 		// validated we must NOT redirect errors to it.
 		if ( ! in_array( $redirect_uri, $client['redirect_uris'], true ) ) {
-			wp_die( esc_html__( 'Invalid redirect_uri for this client.', 'wp-mcp-control' ), '', array( 'response' => 400 ) );
+			wp_die( esc_html__( 'Invalid redirect_uri for this client.', 'ai-site-control' ), '', array( 'response' => 400 ) );
 		}
 		if ( 'code' !== $response_type ) {
 			$this->redirect_error( $redirect_uri, 'unsupported_response_type', $state );
@@ -400,7 +402,7 @@ class OAuth {
 		$user = wp_get_current_user();
 		if ( ! $this->user_may_connect( $user ) ) {
 			wp_die(
-				esc_html__( 'Your account is not permitted to connect an MCP client to this site.', 'wp-mcp-control' ),
+				esc_html__( 'Your account is not permitted to connect an MCP client to this site.', 'ai-site-control' ),
 				'',
 				array( 'response' => 403 )
 			);
@@ -442,7 +444,7 @@ class OAuth {
 	 * @param \WP_User $user   Current user.
 	 */
 	private function render_consent( $client, $params, $user ) {
-		$name  = $client['client_name'] ? $client['client_name'] : __( 'An MCP client', 'wp-mcp-control' );
+		$name  = $client['client_name'] ? $client['client_name'] : __( 'An MCP client', 'ai-site-control' );
 		$roles = implode( ', ', (array) $user->roles );
 
 		// Registration is open by design (RFC 7591), so client_name is chosen
@@ -453,7 +455,7 @@ class OAuth {
 		// that distinguishes the real client from an impostor, so show it.
 		$destination = (string) wp_parse_url( isset( $params['redirect_uri'] ) ? $params['redirect_uri'] : '', PHP_URL_HOST );
 		if ( '' === $destination ) {
-			$destination = __( 'an unknown destination', 'wp-mcp-control' );
+			$destination = __( 'an unknown destination', 'ai-site-control' );
 		}
 
 		$hidden = array( 'client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'response_type', 'scope' );
@@ -471,7 +473,7 @@ class OAuth {
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="robots" content="noindex,nofollow">
-	<title><?php esc_html_e( 'Authorize access', 'wp-mcp-control' ); ?></title>
+	<title><?php esc_html_e( 'Authorize access', 'ai-site-control' ); ?></title>
 	<style>
 		body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f0f0f1;color:#3c434a;margin:0;padding:40px 16px;}
 		.card{max-width:460px;margin:0 auto;background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:28px 30px;}
@@ -490,14 +492,14 @@ class OAuth {
 </head>
 <body>
 	<div class="card">
-		<h1><?php echo esc_html( $name ); ?> <?php esc_html_e( 'wants to connect', 'wp-mcp-control' ); ?></h1>
+		<h1><?php echo esc_html( $name ); ?> <?php esc_html_e( 'wants to connect', 'ai-site-control' ); ?></h1>
 		<p class="site"><?php echo esc_html( get_bloginfo( 'name' ) ); ?> — <?php echo esc_html( home_url() ); ?></p>
-		<p><?php esc_html_e( 'This will let the client read and manage your site through the Model Context Protocol.', 'wp-mcp-control' ); ?></p>
+		<p><?php esc_html_e( 'This will let the client read and manage your site through the Model Context Protocol.', 'ai-site-control' ); ?></p>
 		<p class="who">
 			<?php
 			printf(
 				/* translators: 1: user login, 2: roles */
-				esc_html__( 'It will act as %1$s (%2$s), limited to that account\'s permissions.', 'wp-mcp-control' ),
+				esc_html__( 'It will act as %1$s (%2$s), limited to that account\'s permissions.', 'ai-site-control' ),
 				'<strong>' . esc_html( $user->user_login ) . '</strong>',
 				esc_html( $roles )
 			);
@@ -507,7 +509,7 @@ class OAuth {
 			<?php
 			printf(
 				/* translators: %s: hostname the authorization code will be sent to */
-				esc_html__( 'Access will be sent to %s. Approve only if you recognise that address — the name above is chosen by whoever registered the client and is not verified.', 'wp-mcp-control' ),
+				esc_html__( 'Access will be sent to %s. Approve only if you recognise that address — the name above is chosen by whoever registered the client and is not verified.', 'ai-site-control' ),
 				'<strong>' . esc_html( $destination ) . '</strong>'
 			);
 			?>
@@ -518,13 +520,13 @@ class OAuth {
 				<input type="hidden" name="<?php echo esc_attr( $k ); ?>" value="<?php echo esc_attr( isset( $params[ $k ] ) ? $params[ $k ] : '' ); ?>">
 			<?php endforeach; ?>
 			<div class="actions">
-				<button type="submit" name="approve" value="1" class="approve"><?php esc_html_e( 'Approve', 'wp-mcp-control' ); ?></button>
-				<button type="submit" name="approve" value="" class="deny"><?php esc_html_e( 'Deny', 'wp-mcp-control' ); ?></button>
+				<button type="submit" name="approve" value="1" class="approve"><?php esc_html_e( 'Approve', 'ai-site-control' ); ?></button>
+				<button type="submit" name="approve" value="" class="deny"><?php esc_html_e( 'Deny', 'ai-site-control' ); ?></button>
 			</div>
 		</form>
 		<p class="foot">
-			<?php esc_html_e( 'Signed in as', 'wp-mcp-control' ); ?> <?php echo esc_html( $user->user_login ); ?> —
-			<a href="<?php echo esc_url( wp_logout_url( $this->current_url() ) ); ?>"><?php esc_html_e( 'switch account', 'wp-mcp-control' ); ?></a>
+			<?php esc_html_e( 'Signed in as', 'ai-site-control' ); ?> <?php echo esc_html( $user->user_login ); ?> —
+			<a href="<?php echo esc_url( wp_logout_url( $this->current_url() ) ); ?>"><?php esc_html_e( 'switch account', 'ai-site-control' ); ?></a>
 		</p>
 	</div>
 </body>
@@ -775,10 +777,10 @@ class OAuth {
 					$client = isset( $clients[ $rec['client_id'] ] ) ? $clients[ $rec['client_id'] ] : array();
 					$rows[ $key ] = array(
 						'client_id'   => (string) $rec['client_id'],
-						'client_name' => empty( $client['client_name'] ) ? __( 'Unnamed client', 'wp-mcp-control' ) : $client['client_name'],
+						'client_name' => empty( $client['client_name'] ) ? __( 'Unnamed client', 'ai-site-control' ) : $client['client_name'],
 						'destination' => empty( $client['redirect_uris'][0] ) ? '' : (string) wp_parse_url( $client['redirect_uris'][0], PHP_URL_HOST ),
 						'user_id'     => (int) $rec['user_id'],
-						'user_login'  => $user ? $user->user_login : __( 'deleted account', 'wp-mcp-control' ),
+						'user_login'  => $user ? $user->user_login : __( 'deleted account', 'ai-site-control' ),
 						'access_until'  => 0,
 						'refresh_until' => 0,
 					);
@@ -952,7 +954,9 @@ class OAuth {
 	 * @return string
 	 */
 	private function current_url() {
-		$uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+		// The OAuth parameters ride in this URL's query string, so it must keep
+		// its percent-encoding intact — sanitize_text_field() would strip it.
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '/';
 		return home_url( $uri );
 	}
 
@@ -971,9 +975,14 @@ class OAuth {
 	 * @return array
 	 */
 	private function post_params() {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- the consent
+		// POST is verified with check_admin_referer() by its caller; the token and
+		// refresh grants are unauthenticated by the OAuth specification and are
+		// bound by PKCE instead.
 		if ( ! empty( $_POST ) ) {
-			return $this->clean_params( $_POST ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- consent uses check_admin_referer; token/refresh are unauthenticated by spec.
+			return $this->clean_params( $_POST );
 		}
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 		$json = json_decode( $this->raw_body(), true );
 		return is_array( $json ) ? $this->clean_params( $json ) : array();
 	}

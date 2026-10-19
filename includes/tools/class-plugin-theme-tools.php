@@ -145,7 +145,7 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 		require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
 		require_once ABSPATH . 'wp-admin/includes/theme-install.php';
 		if ( defined( 'DISALLOW_FILE_MODS' ) && DISALLOW_FILE_MODS ) {
-			throw new \Exception( 'File modifications are disabled on this site (DISALLOW_FILE_MODS).' );
+			throw new \Exception( esc_html( 'File modifications are disabled on this site (DISALLOW_FILE_MODS).' ) );
 		}
 
 		if ( ! \WP_Filesystem() ) {
@@ -154,7 +154,7 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 			// would defeat a hardening measure whose entire purpose is to stop
 			// the web process from writing to the codebase.
 			if ( defined( 'FS_METHOD' ) && FS_METHOD ) {
-				throw new \Exception( 'Filesystem credentials are required for this operation (FS_METHOD is ' . FS_METHOD . ').' );
+				throw new \Exception( esc_html( 'Filesystem credentials are required for this operation (FS_METHOD is ' . FS_METHOD . ').' ) );
 			}
 			// A plain closure, not an arrow function: the plugin still has to
 			// parse on PHP 7.0-7.3, where `fn()` is a syntax error.
@@ -165,7 +165,7 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 				}
 			);
 			if ( ! \WP_Filesystem() ) {
-				throw new \Exception( 'Could not initialise the filesystem.' );
+				throw new \Exception( esc_html( 'Could not initialise the filesystem.' ) );
 			}
 		}
 	}
@@ -225,11 +225,11 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 		$plugin = (string) $this->required( $args, 'plugin' );
 
 		if ( 0 !== validate_file( $plugin ) ) {
-			throw new \Exception( 'Invalid plugin path: ' . $plugin );
+			throw new \Exception( esc_html( 'Invalid plugin path: ' . $plugin ) );
 		}
 		// Deactivating itself leaves no way back in over MCP.
 		if ( plugin_basename( WPMCP_FILE ) === $plugin ) {
-			throw new \Exception( 'Refusing to deactivate the MCP plugin itself.' );
+			throw new \Exception( esc_html( 'Refusing to deactivate the MCP plugin itself.' ) );
 		}
 
 		deactivate_plugins( $plugin );
@@ -256,10 +256,10 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 		$upgrader = new \Plugin_Upgrader( new \WP_Ajax_Upgrader_Skin() );
 		$result   = $upgrader->install( $api->download_link );
 		if ( is_wp_error( $result ) ) {
-			throw new \Exception( $result->get_error_message() );
+			throw new \Exception( esc_html( $result->get_error_message() ) );
 		}
 		if ( ! $result ) {
-			throw new \Exception( 'Plugin installation failed. Check filesystem permissions.' );
+			throw new \Exception( esc_html( 'Plugin installation failed. Check filesystem permissions.' ) );
 		}
 
 		$plugin_file = $upgrader->plugin_info();
@@ -292,7 +292,7 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 		$upgrader = new \Plugin_Upgrader( new \WP_Ajax_Upgrader_Skin() );
 		$result   = $upgrader->upgrade( $plugin );
 		if ( is_wp_error( $result ) ) {
-			throw new \Exception( $result->get_error_message() );
+			throw new \Exception( esc_html( $result->get_error_message() ) );
 		}
 		return array(
 			'plugin'  => $plugin,
@@ -316,13 +316,13 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 		// and validates nothing, so "../../wp-includes/x.php" would recursively
 		// delete wp-includes. validate_file() is the check core omits here.
 		if ( 0 !== validate_file( $plugin ) ) {
-			throw new \Exception( 'Invalid plugin path: ' . $plugin );
+			throw new \Exception( esc_html( 'Invalid plugin path: ' . $plugin ) );
 		}
 		if ( ! array_key_exists( $plugin, get_plugins() ) ) {
-			throw new \Exception( 'Unknown plugin: ' . $plugin );
+			throw new \Exception( esc_html( 'Unknown plugin: ' . $plugin ) );
 		}
 		if ( plugin_basename( WPMCP_FILE ) === $plugin ) {
-			throw new \Exception( 'Refusing to delete the MCP plugin itself.' );
+			throw new \Exception( esc_html( 'Refusing to delete the MCP plugin itself.' ) );
 		}
 
 		if ( is_plugin_active( $plugin ) ) {
@@ -373,7 +373,7 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 		$stylesheet = (string) $this->required( $args, 'stylesheet' );
 		$theme      = wp_get_theme( $stylesheet );
 		if ( ! $theme->exists() ) {
-			throw new \Exception( 'Theme not found: ' . $stylesheet );
+			throw new \Exception( esc_html( 'Theme not found: ' . $stylesheet ) );
 		}
 		switch_theme( $stylesheet );
 		return array(
@@ -399,10 +399,10 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 		$upgrader = new \Theme_Upgrader( new \WP_Ajax_Upgrader_Skin() );
 		$result   = $upgrader->install( $api->download_link );
 		if ( is_wp_error( $result ) ) {
-			throw new \Exception( $result->get_error_message() );
+			throw new \Exception( esc_html( $result->get_error_message() ) );
 		}
 		if ( ! $result ) {
-			throw new \Exception( 'Theme installation failed. Check filesystem permissions.' );
+			throw new \Exception( esc_html( 'Theme installation failed. Check filesystem permissions.' ) );
 		}
 
 		$activated = false;
@@ -431,7 +431,7 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 		$upgrader = new \Theme_Upgrader( new \WP_Ajax_Upgrader_Skin() );
 		$result   = $upgrader->upgrade( $stylesheet );
 		if ( is_wp_error( $result ) ) {
-			throw new \Exception( $result->get_error_message() );
+			throw new \Exception( esc_html( $result->get_error_message() ) );
 		}
 		return array(
 			'stylesheet' => $stylesheet,
@@ -453,13 +453,13 @@ class Plugin_Theme_Tools extends Abstract_Tool {
 		// delete_theme() concatenates $themes_dir . $stylesheet unchecked, so
 		// "../plugins" would wipe the plugin directory.
 		if ( 0 !== validate_file( $stylesheet ) ) {
-			throw new \Exception( 'Invalid stylesheet: ' . $stylesheet );
+			throw new \Exception( esc_html( 'Invalid stylesheet: ' . $stylesheet ) );
 		}
 		if ( ! wp_get_theme( $stylesheet )->exists() ) {
-			throw new \Exception( 'Unknown theme: ' . $stylesheet );
+			throw new \Exception( esc_html( 'Unknown theme: ' . $stylesheet ) );
 		}
 		if ( get_stylesheet() === $stylesheet || get_template() === $stylesheet ) {
-			throw new \Exception( 'Cannot delete the active theme.' );
+			throw new \Exception( esc_html( 'Cannot delete the active theme.' ) );
 		}
 		$result = delete_theme( $stylesheet );
 		$this->unwrap( $result );

@@ -32,10 +32,10 @@ class Admin {
 	 */
 	public function menu() {
 		add_options_page(
-			'WP MCP Control',
+			'AI Site Control',
 			'MCP Control',
 			'manage_options',
-			'wp-mcp-control',
+			'ai-site-control',
 			array( $this, 'render' )
 		);
 	}
@@ -63,8 +63,9 @@ class Admin {
 			// The form posts the tools that are CHECKED (= enabled); we store the
 			// complement. Unchecked boxes are simply absent from $_POST, so the
 			// list must be derived from the full registry, not from the request.
-			$checked = isset( $_POST['enabled_tools'] ) ? (array) wp_unslash( $_POST['enabled_tools'] ) : array();
-			$checked = array_map( 'sanitize_text_field', $checked );
+			$checked = isset( $_POST['enabled_tools'] )
+				? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['enabled_tools'] ) )
+				: array();
 			$s['disabled_tools'] = array_values( array_diff( wpmcp()->tools->all_names(), $checked ) );
 			update_option( Auth::OPTION, $s );
 			add_settings_error( 'wpmcp', 'saved', 'Settings saved.', 'updated' );
@@ -172,7 +173,7 @@ class Admin {
 		settings_errors( 'wpmcp' );
 		?>
 		<div class="wrap">
-			<h1>WP MCP Control</h1>
+			<h1>AI Site Control</h1>
 			<p>Free Model Context Protocol server. Connect Claude, ChatGPT and other MCP clients to control this site.</p>
 
 			<h2>Connection</h2>

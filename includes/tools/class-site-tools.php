@@ -88,13 +88,12 @@ class Site_Tools extends Abstract_Tool {
 		'logged_in_salt',
 		'nonce_key',
 		'nonce_salt',
-		// Transients are options, and two of them are code-execution
-		// primitives: _site_transient_update_plugins / _update_themes hold the
-		// package URL that Plugin_Upgrader and Theme_Upgrader download and
-		// unpack. Writing one, then calling update_plugin, installs arbitrary
-		// PHP from an arbitrary host — the exact boundary that blocking
-		// uninstall_plugins and auto_update_plugins above exists to hold.
-		// The substring also covers _site_transient_ and _transient_timeout_.
+		// Transients are options too, and a couple of the ones WordPress keeps
+		// its upgrade bookkeeping in are code-execution primitives: they hold
+		// the package URL that the upgrader downloads and unpacks. Writing one
+		// and then asking the bridge to upgrade would install arbitrary PHP
+		// from an arbitrary host — the same boundary the entries above exist to
+		// hold. This substring covers the site-wide and timeout variants too.
 		'_transient_',
 	);
 
@@ -249,7 +248,7 @@ class Site_Tools extends Abstract_Tool {
 		$out = array();
 		foreach ( $value as $key => $item ) {
 			if ( is_string( $key ) && $this->looks_secret( $key ) ) {
-				$out[ $key ] = '[redacted by wp-mcp-control]';
+				$out[ $key ] = '[redacted by ai-site-control]';
 				continue;
 			}
 			$out[ $key ] = $this->redact( $item, $depth + 1 );
@@ -342,16 +341,12 @@ class Site_Tools extends Abstract_Tool {
 		$blocked_exact = (array) apply_filters( 'wpmcp_write_blocked_options', $this->write_blocked_exact, $name );
 
 		if ( in_array( strtolower( $name ), array_map( 'strtolower', $blocked_exact ), true ) ) {
-			throw new \Exception(
-				sprintf( 'Option "%s" is protected and cannot be changed via MCP (it controls site access or infrastructure).', $name )
-			);
+			throw new \Exception( esc_html( sprintf( 'Option "%s" is protected and cannot be changed via MCP (it controls site access or infrastructure).', $name ) ) );
 		}
 
 		foreach ( $this->write_blocked_fragments as $fragment ) {
 			if ( false !== stripos( $name, $fragment ) ) {
-				throw new \Exception(
-					sprintf( 'Option "%s" is protected and cannot be changed via MCP.', $name )
-				);
+				throw new \Exception( esc_html( sprintf( 'Option "%s" is protected and cannot be changed via MCP.', $name ) ) );
 			}
 		}
 	}
@@ -368,11 +363,11 @@ class Site_Tools extends Abstract_Tool {
 	private function guard_read( $name ) {
 		foreach ( $this->blocked as $b ) {
 			if ( false !== stripos( $name, $b ) ) {
-				throw new \Exception( 'Access to option "' . $name . '" is blocked for security.' );
+				throw new \Exception( esc_html( 'Access to option "' . $name . '" is blocked for security.' ) );
 			}
 		}
 		if ( $this->looks_secret( $name ) ) {
-			throw new \Exception( 'Access to option "' . $name . '" is blocked: it may hold a credential.' );
+			throw new \Exception( esc_html( 'Access to option "' . $name . '" is blocked: it may hold a credential.' ) );
 		}
 	}
 }

@@ -365,14 +365,14 @@ class Posts_Tools extends Abstract_Tool {
 		// wp_delete_post() checks nothing; with force=true this is an
 		// irreversible site-wide destruction primitive.
 		if ( ! get_post( $id ) ) {
-			throw new \Exception( 'Post not found: ' . $id );
+			throw new \Exception( esc_html( 'Post not found: ' . $id ) );
 		}
 		$this->assert_can( 'delete_post', $id );
 
 		$force = ! empty( $args['force'] );
 		$res   = wp_delete_post( $id, $force );
 		if ( ! $res ) {
-			throw new \Exception( 'Failed to delete post: ' . $id );
+			throw new \Exception( esc_html( 'Failed to delete post: ' . $id ) );
 		}
 		return array(
 			'deleted' => true,

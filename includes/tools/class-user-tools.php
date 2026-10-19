@@ -135,7 +135,7 @@ class User_Tools extends Abstract_Tool {
 	public function get_user( array $args ) {
 		$u = get_user_by( 'id', (int) $this->required( $args, 'id' ) );
 		if ( ! $u ) {
-			throw new \Exception( 'User not found.' );
+			throw new \Exception( esc_html( 'User not found.' ) );
 		}
 		return $this->format_user( $u );
 	}
@@ -186,7 +186,7 @@ class User_Tools extends Abstract_Tool {
 		// and the "confirm your new address" flow does not apply here, because
 		// that lives in wp-admin.
 		if ( $id === get_current_user_id() && ( isset( $args['email'] ) || isset( $args['password'] ) ) ) {
-			throw new \Exception( 'Refusing to change the email or password of the account this connection acts as. Do it from the WordPress profile screen.' );
+			throw new \Exception( esc_html( 'Refusing to change the email or password of the account this connection acts as. Do it from the WordPress profile screen.' ) );
 		}
 
 		if ( isset( $args['role'] ) ) {
@@ -224,7 +224,7 @@ class User_Tools extends Abstract_Tool {
 
 		$this->assert_touchable_user( $id, 'delete_user' );
 		if ( $id === get_current_user_id() ) {
-			throw new \Exception( 'Refusing to delete the account this connection acts as.' );
+			throw new \Exception( esc_html( 'Refusing to delete the account this connection acts as.' ) );
 		}
 
 		$reassign = ! empty( $args['reassign'] ) ? (int) $args['reassign'] : null;
@@ -236,11 +236,11 @@ class User_Tools extends Abstract_Tool {
 			// A site administrator may have delete_users, but that does not
 			// authorize deleting an account from the entire network.
 			if ( ! is_super_admin( get_current_user_id() ) ) {
-				throw new \Exception( 'Network-wide user deletion requires a network administrator.' );
+				throw new \Exception( esc_html( 'Network-wide user deletion requires a network administrator.' ) );
 			}
 			require_once ABSPATH . 'wp-admin/includes/ms.php';
 			if ( ! wpmu_delete_user( $id ) ) {
-				throw new \Exception( 'Failed to delete user: ' . $id );
+				throw new \Exception( esc_html( 'Failed to delete user: ' . $id ) );
 			}
 			return array(
 				'deleted' => true,
@@ -249,7 +249,7 @@ class User_Tools extends Abstract_Tool {
 		}
 
 		if ( ! wp_delete_user( $id, $reassign ) ) {
-			throw new \Exception( 'Failed to delete user: ' . $id );
+			throw new \Exception( esc_html( 'Failed to delete user: ' . $id ) );
 		}
 		return array(
 			'deleted' => true,

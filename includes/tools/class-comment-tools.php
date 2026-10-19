@@ -130,10 +130,10 @@ class Comment_Tools extends Abstract_Tool {
 
 		$status = (string) ( $args['status'] ?? 'hold' );
 		if ( ! in_array( $status, array( 'approve', 'hold' ), true ) ) {
-			throw new \Exception( 'Invalid status: use "approve" or "hold".' );
+			throw new \Exception( esc_html( 'Invalid status: use "approve" or "hold".' ) );
 		}
 		if ( 'approve' === $status && ! current_user_can( 'moderate_comments' ) ) {
-			throw new \Exception( 'Permission denied: moderate_comments is required to publish a comment directly.' );
+			throw new \Exception( esc_html( 'Permission denied: moderate_comments is required to publish a comment directly.' ) );
 		}
 
 		$data = array(
@@ -148,7 +148,7 @@ class Comment_Tools extends Abstract_Tool {
 		$id = wp_new_comment( wp_slash( $data ), true );
 		$this->unwrap( $id );
 		if ( ! $id ) {
-			throw new \Exception( 'Failed to create comment.' );
+			throw new \Exception( esc_html( 'Failed to create comment.' ) );
 		}
 		return $this->format_comment( get_comment( $id ) );
 	}
@@ -162,7 +162,7 @@ class Comment_Tools extends Abstract_Tool {
 	public function update_comment( array $args ) {
 		$id = (int) $this->required( $args, 'id' );
 		if ( ! get_comment( $id ) ) {
-			throw new \Exception( 'Comment not found: ' . $id );
+			throw new \Exception( esc_html( 'Comment not found: ' . $id ) );
 		}
 
 		if ( isset( $args['content'] ) ) {
@@ -183,11 +183,11 @@ class Comment_Tools extends Abstract_Tool {
 		if ( isset( $args['status'] ) ) {
 			$status = (string) $args['status'];
 			if ( ! in_array( $status, array( 'approve', 'hold', 'spam', 'trash' ), true ) ) {
-				throw new \Exception( 'Invalid status: use approve, hold, spam or trash.' );
+				throw new \Exception( esc_html( 'Invalid status: use approve, hold, spam or trash.' ) );
 			}
 			// Returns false on failure; discarding it reported success either way.
 			if ( ! wp_set_comment_status( $id, $status ) ) {
-				throw new \Exception( 'Failed to set comment status.' );
+				throw new \Exception( esc_html( 'Failed to set comment status.' ) );
 			}
 		}
 		return $this->format_comment( get_comment( $id ) );
@@ -202,7 +202,7 @@ class Comment_Tools extends Abstract_Tool {
 	public function delete_comment( array $args ) {
 		$id = (int) $this->required( $args, 'id' );
 		if ( ! wp_delete_comment( $id, ! empty( $args['force'] ) ) ) {
-			throw new \Exception( 'Failed to delete comment: ' . $id );
+			throw new \Exception( esc_html( 'Failed to delete comment: ' . $id ) );
 		}
 		return array(
 			'deleted' => true,

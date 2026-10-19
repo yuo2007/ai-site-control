@@ -155,8 +155,8 @@ class MCP_Server {
 				'prompts'   => array( 'listChanged' => false ),
 			),
 			'serverInfo'      => array(
-				'name'    => 'wp-mcp-control',
-				'title'   => get_bloginfo( 'name' ) . ' (WP MCP Control)',
+				'name'    => 'ai-site-control',
+				'title'   => get_bloginfo( 'name' ) . ' (AI Site Control)',
 				'version' => WPMCP_VERSION,
 			),
 			'instructions'    => 'WordPress site control server. Use tools/list to discover available operations for posts, media, users, taxonomies, comments, options, plugins, themes, WooCommerce and Polylang.',

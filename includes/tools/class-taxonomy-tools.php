@@ -266,7 +266,7 @@ class Taxonomy_Tools extends Abstract_Tool {
 			} elseif ( $may_create ) {
 				$normalized[] = $name;
 			} else {
-				throw new \Exception( 'Unknown term (creating it requires manage rights): ' . $name );
+				throw new \Exception( esc_html( 'Unknown term (creating it requires manage rights): ' . $name ) );
 			}
 		}
 

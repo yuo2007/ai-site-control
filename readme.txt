@@ -1,4 +1,4 @@
-=== WP MCP Control ===
+=== AI Site Control ===
 Contributors: YOUR-WORDPRESS-ORG-USERNAME
 Tags: mcp, ai, automation, api, content-management
 Requires at least: 5.8
@@ -12,7 +12,7 @@ Free, open Model Context Protocol (MCP) server for WordPress. Let Claude, ChatGP
 
 == Description ==
 
-WP MCP Control exposes a single Streamable-HTTP MCP endpoint that lets AI clients manage:
+AI Site Control exposes a single Streamable-HTTP MCP endpoint that lets AI clients manage:
 
 * Posts, pages and any custom post type — create, read, update, delete, meta.
 * Taxonomies & terms — categories, tags, custom taxonomies, term assignment.
@@ -33,7 +33,7 @@ WordPress 5.8 or newer and PHP 7.0 or newer. Everything works the same on old an
 
 == Installation ==
 
-1. Copy the `wp-mcp-control` folder to `wp-content/plugins/` and activate it.
+1. Install from Plugins → Add New, or copy the `ai-site-control` folder to `wp-content/plugins/` and activate it.
 2. Make sure Settings → Permalinks is set to any option other than "Plain".
 3. Go to Settings → MCP Control and enable the server.
 
@@ -128,7 +128,7 @@ Entries before this plugin joined the directory describe releases that were dist
 
 = 0.6.0 =
 * Added: one-click updates. The plugin now reports new versions to WordPress itself, so Dashboard → Updates and the Plugins screen offer "Update now" exactly as they do for a plugin from the directory — no more uploading a ZIP by hand, and no helper plugin to install. Uses the "Update URI" header that WordPress has supported since 5.8; releases are served from GitHub. Note that this release still has to be installed manually once, because the update code has to be on the site before WordPress can offer anything.
-* Fixed: the distributed ZIP now wraps everything in a single `wp-mcp-control` folder. Earlier archives had the files at the root, which made WordPress name the plugin folder after the ZIP file, so the directory differed from site to site. Updates install into whatever folder a site already uses, so an existing install is upgraded in place rather than duplicated into a new one.
+* Fixed: the distributed archive wraps everything in a single folder. Earlier ones had the files at the root, which made WordPress name the plugin directory after the archive, so it differed from site to site.
 * Changed: minimum requirements lowered from WordPress 6.0 / PHP 7.4 to **WordPress 5.8 / PHP 7.0**. Every WordPress function the plugin calls was checked against the 5.8 core API — no shims were needed, so the plugin behaves identically on old and new installs. The only PHP 7.4-only construct (an arrow function in the filesystem bootstrap) was rewritten as a plain closure.
 * Added: a requirements check at load time. On an unsupported stack the plugin stays inert and shows an admin notice instead of causing a fatal error — this matters because the "Requires at least" header only blocks activation, not a plugin that is already active when the site is downgraded.
 * Note: Full Site Editing tools (templates, global styles, navigation) depend on post types that WordPress registers only from 5.9 with a block theme. On 5.8 or a classic theme they are reported as unknown post types; every other tool is unaffected.

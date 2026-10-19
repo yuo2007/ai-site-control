@@ -99,7 +99,7 @@ class Auth {
 		$header = $request->get_header( 'authorization' );
 		if ( ! $header ) {
 			// Some servers strip the Authorization header; fall back.
-			$header = isset( $_SERVER['HTTP_AUTHORIZATION'] ) ? wp_unslash( $_SERVER['HTTP_AUTHORIZATION'] ) : '';
+			$header = isset( $_SERVER['HTTP_AUTHORIZATION'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_AUTHORIZATION'] ) ) : '';
 		}
 		if ( $header && preg_match( '/Bearer\s+(\S+)/i', $header, $m ) ) {
 			return trim( $m[1] );
@@ -239,7 +239,7 @@ class Auth {
 	 */
 	private function log( $message ) {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( '[wp-mcp-control] ' . $message ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( '[ai-site-control] ' . $message ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 		}
 	}
 }

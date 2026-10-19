@@ -175,7 +175,7 @@ class Polylang_Tools extends Abstract_Tool {
 	public function link_translations( array $args ) {
 		$translations = $this->required( $args, 'translations' );
 		if ( ! is_array( $translations ) ) {
-			throw new \Exception( 'translations must be an object mapping language slug to post ID.' );
+			throw new \Exception( esc_html( 'translations must be an object mapping language slug to post ID.' ) );
 		}
 		$map = array();
 		foreach ( $translations as $lang => $id ) {
@@ -246,7 +246,7 @@ class Polylang_Tools extends Abstract_Tool {
 		$lang    = (string) $this->required( $args, 'lang' );
 		$term    = get_term( $term_id );
 		if ( ! $term || is_wp_error( $term ) ) {
-			throw new \Exception( 'Term not found: ' . $term_id );
+			throw new \Exception( esc_html( 'Term not found: ' . $term_id ) );
 		}
 		$this->assert_taxonomy( $term->taxonomy, 'edit' );
 		pll_set_term_language( $term_id, $lang );

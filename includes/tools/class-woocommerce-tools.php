@@ -199,7 +199,7 @@ class WooCommerce_Tools extends Abstract_Tool {
 		// Allow-list the type: 'ucfirst' lets user input steer class_exists()
 		// into autoloading arbitrary WC_Product_* classes otherwise.
 		if ( ! in_array( $type, array( 'simple', 'grouped', 'external', 'variable' ), true ) ) {
-			throw new \Exception( 'Unsupported product type: ' . $type );
+			throw new \Exception( esc_html( 'Unsupported product type: ' . $type ) );
 		}
 		$class   = 'WC_Product_' . ucfirst( $type );
 		$product = class_exists( $class ) ? new $class() : new \WC_Product_Simple();
@@ -450,7 +450,7 @@ class WooCommerce_Tools extends Abstract_Tool {
 		$id      = (int) $this->required( $args, 'id' );
 		$product = wc_get_product( $id );
 		if ( ! $product ) {
-			throw new \Exception( 'Product not found.' );
+			throw new \Exception( esc_html( 'Product not found.' ) );
 		}
 		$this->assert_can( $cap, $product->get_id() );
 		return $product;
@@ -472,7 +472,7 @@ class WooCommerce_Tools extends Abstract_Tool {
 		$id    = (int) $this->required( $args, 'id' );
 		$order = wc_get_order( $id );
 		if ( ! $order ) {
-			throw new \Exception( 'Order not found.' );
+			throw new \Exception( esc_html( 'Order not found.' ) );
 		}
 		$this->assert_can( $cap, $order->get_id() );
 		return $order;

@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name:       WP MCP Control
+ * Plugin Name:       AI Site Control
  * Plugin URI:        https://github.com/yuo2007/ultimate-mcp-wordpress
  * Description:        Free, open Model Context Protocol (MCP) server for WordPress. Lets Claude, ChatGPT and other MCP clients manage posts, media, users, taxonomies, comments, options, plugins, themes, WooCommerce and Polylang translations.
  * Version:           0.8.0
@@ -10,7 +10,7 @@
  * Author URI:        https://www.linkedin.com/in/%D0%BE%D0%BB%D0%B5%D0%BA%D1%81%D0%B0%D0%BD%D0%B4%D1%80-%D1%81%D1%96%D0%BC%D0%BE%D0%BD%D0%BE%D0%B2-522aa2b0/
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain:       wp-mcp-control
+ * Text Domain:       ai-site-control
  *
  * @package WPMCP
  */
@@ -27,7 +27,7 @@ define( 'WPMCP_NAMESPACE', 'wp-mcp/v1' );
 define( 'WPMCP_MIN_WP', '5.8' );
 define( 'WPMCP_MIN_PHP', '7.0' );
 
-define( 'WPMCP_SLUG', 'wp-mcp-control' );
+define( 'WPMCP_SLUG', 'ai-site-control' );
 define( 'WPMCP_BASENAME', plugin_basename( __FILE__ ) );
 
 /**
@@ -43,7 +43,7 @@ function unsupported_reason() {
 	if ( version_compare( PHP_VERSION, WPMCP_MIN_PHP, '<' ) ) {
 		return sprintf(
 			/* translators: 1: required PHP version, 2: current PHP version. */
-			__( 'WP MCP Control requires PHP %1$s or newer. This site runs PHP %2$s.', 'wp-mcp-control' ),
+			__( 'AI Site Control requires PHP %1$s or newer. This site runs PHP %2$s.', 'ai-site-control' ),
 			WPMCP_MIN_PHP,
 			PHP_VERSION
 		);
@@ -53,7 +53,7 @@ function unsupported_reason() {
 	if ( version_compare( $wp_version, WPMCP_MIN_WP, '<' ) ) {
 		return sprintf(
 			/* translators: 1: required WordPress version, 2: current WordPress version. */
-			__( 'WP MCP Control requires WordPress %1$s or newer. This site runs WordPress %2$s.', 'wp-mcp-control' ),
+			__( 'AI Site Control requires WordPress %1$s or newer. This site runs WordPress %2$s.', 'ai-site-control' ),
 			WPMCP_MIN_WP,
 			$wp_version
 		);

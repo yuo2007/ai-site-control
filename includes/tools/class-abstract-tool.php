@@ -91,7 +91,7 @@ abstract class Abstract_Tool {
 	 */
 	protected function required( array $args, $key ) {
 		if ( ! isset( $args[ $key ] ) || '' === $args[ $key ] ) {
-			throw new \Exception( sprintf( 'Missing required argument: %s', $key ) );
+			throw new \Exception( esc_html( sprintf( 'Missing required argument: %s', $key ) ) );
 		}
 		return $args[ $key ];
 	}
@@ -105,7 +105,7 @@ abstract class Abstract_Tool {
 	 */
 	protected function unwrap( $value ) {
 		if ( is_wp_error( $value ) ) {
-			throw new \Exception( $value->get_error_message() );
+			throw new \Exception( esc_html( $value->get_error_message() ) );
 		}
 		return $value;
 	}
@@ -136,7 +136,7 @@ abstract class Abstract_Tool {
 	 */
 	protected function assert_can( $cap, $id ) {
 		if ( ! current_user_can( $cap, $id ) ) {
-			throw new \Exception( sprintf( 'Permission denied: %s on object %d.', $cap, (int) $id ) );
+			throw new \Exception( esc_html( sprintf( 'Permission denied: %s on object %d.', $cap, (int) $id ) ) );
 		}
 	}
 
@@ -150,7 +150,7 @@ abstract class Abstract_Tool {
 	protected function assert_editable_post( $id ) {
 		$post = get_post( (int) $id );
 		if ( ! $post ) {
-			throw new \Exception( 'Post not found: ' . (int) $id );
+			throw new \Exception( esc_html( 'Post not found: ' . (int) $id ) );
 		}
 		$this->assert_can( 'edit_post', $post->ID );
 		return $post;
@@ -166,10 +166,10 @@ abstract class Abstract_Tool {
 	protected function assert_readable_post( $id ) {
 		$post = get_post( (int) $id );
 		if ( ! $post ) {
-			throw new \Exception( 'Post not found: ' . (int) $id );
+			throw new \Exception( esc_html( 'Post not found: ' . (int) $id ) );
 		}
 		if ( ! current_user_can( 'read_post', $post->ID ) ) {
-			throw new \Exception( 'Permission denied: cannot read post ' . $post->ID . '.' );
+			throw new \Exception( esc_html( 'Permission denied: cannot read post ' . $post->ID . '.' ) );
 		}
 		return $post;
 	}
@@ -184,7 +184,7 @@ abstract class Abstract_Tool {
 	protected function assert_attachment( $id, $cap = 'edit_post' ) {
 		$id = (int) $id;
 		if ( 'attachment' !== get_post_type( $id ) ) {
-			throw new \Exception( 'Not an attachment: ' . $id );
+			throw new \Exception( esc_html( 'Not an attachment: ' . $id ) );
 		}
 		$this->assert_can( $cap, $id );
 	}
@@ -211,12 +211,12 @@ abstract class Abstract_Tool {
 		// stay gated by their own edit_theme_options capability below.
 		$internal = array( 'revision', 'nav_menu_item', 'oembed_cache', 'user_request', 'customize_changeset' );
 		if ( in_array( $post_type, $internal, true ) ) {
-			throw new \Exception( 'Post type not manageable via MCP: ' . $post_type );
+			throw new \Exception( esc_html( 'Post type not manageable via MCP: ' . $post_type ) );
 		}
 
 		$obj = get_post_type_object( $post_type );
 		if ( ! $obj ) {
-			throw new \Exception( 'Unknown post type: ' . $post_type );
+			throw new \Exception( esc_html( 'Unknown post type: ' . $post_type ) );
 		}
 
 		$map = array(
@@ -228,7 +228,7 @@ abstract class Abstract_Tool {
 		$cap = $map[ $action ] ?? $obj->cap->edit_posts;
 
 		if ( ! current_user_can( $cap ) ) {
-			throw new \Exception( sprintf( 'Permission denied: %s (%s) requires "%s".', $post_type, $action, $cap ) );
+			throw new \Exception( esc_html( sprintf( 'Permission denied: %s (%s) requires "%s".', $post_type, $action, $cap ) ) );
 		}
 		return $obj;
 	}
@@ -247,7 +247,7 @@ abstract class Abstract_Tool {
 	protected function assert_taxonomy( $taxonomy, $action = 'manage' ) {
 		$obj = get_taxonomy( (string) $taxonomy );
 		if ( ! $obj ) {
-			throw new \Exception( 'Unknown taxonomy: ' . $taxonomy );
+			throw new \Exception( esc_html( 'Unknown taxonomy: ' . $taxonomy ) );
 		}
 		$map = array(
 			'manage' => $obj->cap->manage_terms,
@@ -258,7 +258,7 @@ abstract class Abstract_Tool {
 		$cap = $map[ $action ] ?? $obj->cap->manage_terms;
 
 		if ( ! current_user_can( $cap ) ) {
-			throw new \Exception( sprintf( 'Permission denied: taxonomy "%s" (%s) requires "%s".', $taxonomy, $action, $cap ) );
+			throw new \Exception( esc_html( sprintf( 'Permission denied: taxonomy "%s" (%s) requires "%s".', $taxonomy, $action, $cap ) ) );
 		}
 		return $obj;
 	}
@@ -280,16 +280,16 @@ abstract class Abstract_Tool {
 		$id     = (int) $id;
 		$target = get_userdata( $id );
 		if ( ! $target ) {
-			throw new \Exception( 'User not found: ' . $id );
+			throw new \Exception( esc_html( 'User not found: ' . $id ) );
 		}
 
 		$this->assert_can( $cap, $id );
 
 		if ( is_multisite() && is_super_admin( $id ) ) {
-			throw new \Exception( 'Refusing to modify a network administrator via MCP.' );
+			throw new \Exception( esc_html( 'Refusing to modify a network administrator via MCP.' ) );
 		}
 		if ( user_can( $id, 'manage_options' ) && $id !== get_current_user_id() ) {
-			throw new \Exception( 'Refusing to modify another administrator account via MCP.' );
+			throw new \Exception( esc_html( 'Refusing to modify another administrator account via MCP.' ) );
 		}
 		return $target;
 	}
@@ -321,13 +321,13 @@ abstract class Abstract_Tool {
 	protected function assert_assignable_role( $role ) {
 		$role = (string) $role;
 		if ( ! get_role( $role ) ) {
-			throw new \Exception( 'Unknown role: ' . $role );
+			throw new \Exception( esc_html( 'Unknown role: ' . $role ) );
 		}
 		if ( ! in_array( $role, $this->assignable_roles(), true ) ) {
-			throw new \Exception( sprintf( 'Role "%s" cannot be assigned via MCP.', $role ) );
+			throw new \Exception( esc_html( sprintf( 'Role "%s" cannot be assigned via MCP.', $role ) ) );
 		}
 		if ( ! current_user_can( 'promote_users' ) ) {
-			throw new \Exception( 'Permission denied: promote_users is required to set a role.' );
+			throw new \Exception( esc_html( 'Permission denied: promote_users is required to set a role.' ) );
 		}
 	}
 
@@ -348,7 +348,7 @@ abstract class Abstract_Tool {
 		if ( $this->is_allowed_protected_meta( $key ) ) {
 			return;
 		}
-		throw new \Exception( sprintf( 'Protected meta key is not writable via MCP: %s', $key ) );
+		throw new \Exception( esc_html( sprintf( 'Protected meta key is not writable via MCP: %s', $key ) ) );
 	}
 
 	/**

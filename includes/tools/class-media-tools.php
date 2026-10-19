@@ -173,7 +173,7 @@ class Media_Tools extends Abstract_Tool {
 		$max = wp_max_upload_size();
 		if ( $max > 0 && filesize( $tmp ) > $max ) {
 			wp_delete_file( $tmp );
-			throw new \Exception( 'Downloaded file exceeds the maximum upload size.' );
+			throw new \Exception( esc_html( 'Downloaded file exceeds the maximum upload size.' ) );
 		}
 
 		$filename  = ! empty( $args['filename'] ) ? sanitize_file_name( $args['filename'] ) : basename( wp_parse_url( $url, PHP_URL_PATH ) );
@@ -185,7 +185,7 @@ class Media_Tools extends Abstract_Tool {
 		$id = media_handle_sideload( $file_array, (int) ( $args['post_id'] ?? 0 ) );
 		if ( is_wp_error( $id ) ) {
 			wp_delete_file( $tmp );
-			throw new \Exception( $id->get_error_message() );
+			throw new \Exception( esc_html( $id->get_error_message() ) );
 		}
 
 		$this->apply_media_meta( $id, $args );
@@ -213,16 +213,16 @@ class Media_Tools extends Abstract_Tool {
 		$max = wp_max_upload_size();
 		$max = $max > 0 ? $max : 8 * MB_IN_BYTES;
 		if ( strlen( $raw ) > (int) ( $max * 1.4 ) ) {
-			throw new \Exception( 'Payload too large.' );
+			throw new \Exception( esc_html( 'Payload too large.' ) );
 		}
 
 		$decoded = base64_decode( $raw, true );
 		unset( $raw );
 		if ( false === $decoded ) {
-			throw new \Exception( 'Invalid base64 data.' );
+			throw new \Exception( esc_html( 'Invalid base64 data.' ) );
 		}
 		if ( strlen( $decoded ) > $max ) {
-			throw new \Exception( 'Decoded file exceeds the maximum upload size.' );
+			throw new \Exception( esc_html( 'Decoded file exceeds the maximum upload size.' ) );
 		}
 
 		// The URL path gets wp_check_filetype_and_ext() for free via
@@ -231,7 +231,7 @@ class Media_Tools extends Abstract_Tool {
 		// have to match the name.
 		$tmp = wp_tempnam( $filename );
 		if ( ! $tmp ) {
-			throw new \Exception( 'Could not create a temporary file.' );
+			throw new \Exception( esc_html( 'Could not create a temporary file.' ) );
 		}
 		file_put_contents( $tmp, $decoded ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		unset( $decoded );
@@ -239,7 +239,7 @@ class Media_Tools extends Abstract_Tool {
 		$check = wp_check_filetype_and_ext( $tmp, $filename );
 		if ( empty( $check['ext'] ) || empty( $check['type'] ) ) {
 			wp_delete_file( $tmp );
-			throw new \Exception( 'File content does not match its extension, or the type is not allowed.' );
+			throw new \Exception( esc_html( 'File content does not match its extension, or the type is not allowed.' ) );
 		}
 
 		$id = media_handle_sideload(
@@ -251,7 +251,7 @@ class Media_Tools extends Abstract_Tool {
 		);
 		if ( is_wp_error( $id ) ) {
 			wp_delete_file( $tmp );
-			throw new \Exception( $id->get_error_message() );
+			throw new \Exception( esc_html( $id->get_error_message() ) );
 		}
 
 		$this->apply_media_meta( $id, $args );
@@ -305,7 +305,7 @@ class Media_Tools extends Abstract_Tool {
 		$force = isset( $args['force'] ) ? (bool) $args['force'] : true;
 		$res   = wp_delete_attachment( $id, $force );
 		if ( ! $res ) {
-			throw new \Exception( 'Failed to delete attachment: ' . $id );
+			throw new \Exception( esc_html( 'Failed to delete attachment: ' . $id ) );
 		}
 		return array(
 			'deleted' => true,
@@ -370,7 +370,7 @@ class Media_Tools extends Abstract_Tool {
 
 			$tmp = wp_tempnam( $url );
 			if ( ! $tmp ) {
-				throw new \Exception( 'Could not create a temporary file.' );
+				throw new \Exception( esc_html( 'Could not create a temporary file.' ) );
 			}
 
 			$pin = $this->pin_dns( $url, $ips[0] );
@@ -389,7 +389,7 @@ class Media_Tools extends Abstract_Tool {
 
 			if ( is_wp_error( $response ) ) {
 				wp_delete_file( $tmp );
-				throw new \Exception( $response->get_error_message() );
+				throw new \Exception( esc_html( $response->get_error_message() ) );
 			}
 
 			$code = (int) wp_remote_retrieve_response_code( $response );
@@ -403,7 +403,7 @@ class Media_Tools extends Abstract_Tool {
 			if ( $code >= 300 && $code < 400 ) {
 				$location = wp_remote_retrieve_header( $response, 'location' );
 				if ( '' === $location ) {
-					throw new \Exception( 'Redirect without a destination.' );
+					throw new \Exception( esc_html( 'Redirect without a destination.' ) );
 				}
 				// A relative Location is resolved against the hop we just made,
 				// so it cannot smuggle in a host that was never checked.
@@ -411,10 +411,10 @@ class Media_Tools extends Abstract_Tool {
 				continue;
 			}
 
-			throw new \Exception( 'Download failed with HTTP status ' . $code . '.' );
+			throw new \Exception( esc_html( 'Download failed with HTTP status ' . $code . '.' ) );
 		}
 
-		throw new \Exception( 'Too many redirects.' );
+		throw new \Exception( esc_html( 'Too many redirects.' ) );
 	}
 
 	/**
@@ -464,10 +464,10 @@ class Media_Tools extends Abstract_Tool {
 	private function assert_external_url( $url ) {
 		$parts = wp_parse_url( $url );
 		if ( empty( $parts['host'] ) || empty( $parts['scheme'] ) ) {
-			throw new \Exception( 'Invalid URL.' );
+			throw new \Exception( esc_html( 'Invalid URL.' ) );
 		}
 		if ( ! in_array( strtolower( $parts['scheme'] ), array( 'http', 'https' ), true ) ) {
-			throw new \Exception( 'Only http and https URLs may be fetched.' );
+			throw new \Exception( esc_html( 'Only http and https URLs may be fetched.' ) );
 		}
 
 		$ips = gethostbynamel( $parts['host'] );
@@ -476,20 +476,20 @@ class Media_Tools extends Abstract_Tool {
 			$ips = filter_var( trim( $parts['host'], '[]' ), FILTER_VALIDATE_IP ) ? array( trim( $parts['host'], '[]' ) ) : array();
 		}
 		if ( empty( $ips ) ) {
-			throw new \Exception( 'Could not resolve host: ' . $parts['host'] );
+			throw new \Exception( esc_html( 'Could not resolve host: ' . $parts['host'] ) );
 		}
 
 		foreach ( $ips as $ip ) {
 			// NO_RES_RANGE covers 169.254/16, 127/8, 240/4 and friends;
 			// NO_PRIV_RANGE covers 10/8, 172.16/12, 192.168/16, fc00::/7.
 			if ( ! filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
-				throw new \Exception( 'Refusing to fetch an internal address: ' . $ip );
+				throw new \Exception( esc_html( 'Refusing to fetch an internal address: ' . $ip ) );
 			}
 			// Carrier-grade NAT / common k8s range, not covered by the flags.
 			if ( 0 === strpos( $ip, '100.' ) ) {
 				$octet = (int) explode( '.', $ip )[1];
 				if ( $octet >= 64 && $octet <= 127 ) {
-					throw new \Exception( 'Refusing to fetch an internal address: ' . $ip );
+					throw new \Exception( esc_html( 'Refusing to fetch an internal address: ' . $ip ) );
 				}
 			}
 		}
