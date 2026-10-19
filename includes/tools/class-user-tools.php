@@ -178,6 +178,17 @@ class User_Tools extends Abstract_Tool {
 		// because that lives in wp-admin, not here.
 		$this->assert_touchable_user( $id, 'edit_user' );
 
+		// assert_touchable_user() exempts the caller's own account from the
+		// "not another administrator" guard, which is right for renaming
+		// yourself and wrong for the two fields that constitute the account.
+		// Letting a connection rewrite its own login address or password turns
+		// a leaked token into permanent takeover, with the owner locked out —
+		// and the "confirm your new address" flow does not apply here, because
+		// that lives in wp-admin.
+		if ( $id === get_current_user_id() && ( isset( $args['email'] ) || isset( $args['password'] ) ) ) {
+			throw new \Exception( 'Refusing to change the email or password of the account this connection acts as. Do it from the WordPress profile screen.' );
+		}
+
 		if ( isset( $args['role'] ) ) {
 			$this->assert_assignable_role( (string) $args['role'] );
 		}

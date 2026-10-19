@@ -340,6 +340,17 @@ class OAuth {
 		$name  = $client['client_name'] ? $client['client_name'] : __( 'An MCP client', 'wp-mcp-control' );
 		$roles = implode( ', ', (array) $user->roles );
 
+		// Registration is open by design (RFC 7591), so client_name is chosen
+		// by whoever registered and proves nothing — anyone can register a
+		// client called "Claude" pointing at their own server, mail the
+		// /authorize link to a logged-in administrator, and collect a token
+		// for that account. The host the code will be sent to is the one fact
+		// that distinguishes the real client from an impostor, so show it.
+		$destination = (string) wp_parse_url( isset( $params['redirect_uri'] ) ? $params['redirect_uri'] : '', PHP_URL_HOST );
+		if ( '' === $destination ) {
+			$destination = __( 'an unknown destination', 'wp-mcp-control' );
+		}
+
 		$hidden = array( 'client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'response_type', 'scope' );
 
 		// A self-contained page: login_header()/login_footer() live in
@@ -363,6 +374,7 @@ class OAuth {
 		.site{color:#646970;font-size:13px;margin:0 0 20px;}
 		p{font-size:14px;line-height:1.6;}
 		.who{background:#f6f7f7;border-radius:6px;padding:10px 12px;font-size:13px;}
+		.dest{background:#fcf9e8;border-left:4px solid #dba617;border-radius:0 6px 6px 0;padding:10px 12px;font-size:13px;}
 		.actions{display:flex;gap:10px;margin-top:24px;}
 		button{font-size:14px;padding:9px 18px;border-radius:5px;cursor:pointer;border:1px solid #2271b1;}
 		.approve{background:#2271b1;color:#fff;}
@@ -383,6 +395,15 @@ class OAuth {
 				esc_html__( 'It will act as %1$s (%2$s), limited to that account\'s permissions.', 'wp-mcp-control' ),
 				'<strong>' . esc_html( $user->user_login ) . '</strong>',
 				esc_html( $roles )
+			);
+			?>
+		</p>
+		<p class="dest">
+			<?php
+			printf(
+				/* translators: %s: hostname the authorization code will be sent to */
+				esc_html__( 'Access will be sent to %s. Approve only if you recognise that address — the name above is chosen by whoever registered the client and is not verified.', 'wp-mcp-control' ),
+				'<strong>' . esc_html( $destination ) . '</strong>'
 			);
 			?>
 		</p>

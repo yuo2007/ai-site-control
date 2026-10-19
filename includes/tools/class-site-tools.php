@@ -88,6 +88,14 @@ class Site_Tools extends Abstract_Tool {
 		'logged_in_salt',
 		'nonce_key',
 		'nonce_salt',
+		// Transients are options, and two of them are code-execution
+		// primitives: _site_transient_update_plugins / _update_themes hold the
+		// package URL that Plugin_Upgrader and Theme_Upgrader download and
+		// unpack. Writing one, then calling update_plugin, installs arbitrary
+		// PHP from an arbitrary host — the exact boundary that blocking
+		// uninstall_plugins and auto_update_plugins above exists to hold.
+		// The substring also covers _site_transient_ and _transient_timeout_.
+		'_transient_',
 	);
 
 	/**
@@ -212,8 +220,56 @@ class Site_Tools extends Abstract_Tool {
 		$this->guard_read( $name );
 		return array(
 			'name'  => $name,
-			'value' => get_option( $name ),
+			'value' => $this->redact( get_option( $name ) ),
 		);
+	}
+
+	/**
+	 * Blank out credential-looking entries inside an option value.
+	 *
+	 * guard_read() can only judge the option NAME, and plugins almost never
+	 * give a secret its own option: they store one settings array under a
+	 * perfectly innocent name. woocommerce_stripe_settings holds secret_key,
+	 * SMTP plugins keep the mailbox password inside their *_options array.
+	 * None of those names match the deny-list, so without this the whole array
+	 * — live API keys included — is handed to an external model.
+	 *
+	 * Keys are matched with the same fragment list used for names, so the two
+	 * halves of the check cannot drift apart.
+	 *
+	 * @param mixed $value Option value.
+	 * @param int   $depth Recursion guard for self-referential structures.
+	 * @return mixed
+	 */
+	private function redact( $value, $depth = 0 ) {
+		if ( $depth > 10 || ! is_array( $value ) ) {
+			return $value;
+		}
+
+		$out = array();
+		foreach ( $value as $key => $item ) {
+			if ( is_string( $key ) && $this->looks_secret( $key ) ) {
+				$out[ $key ] = '[redacted by wp-mcp-control]';
+				continue;
+			}
+			$out[ $key ] = $this->redact( $item, $depth + 1 );
+		}
+		return $out;
+	}
+
+	/**
+	 * Whether a name reads like a credential.
+	 *
+	 * @param string $name Option or array key.
+	 * @return bool
+	 */
+	private function looks_secret( $name ) {
+		foreach ( $this->secret_fragments as $fragment ) {
+			if ( false !== stripos( $name, $fragment ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -234,7 +290,7 @@ class Site_Tools extends Abstract_Tool {
 		update_option( $name, $value );
 		return array(
 			'name'  => $name,
-			'value' => get_option( $name ),
+			'value' => $this->redact( get_option( $name ) ),
 		);
 	}
 
@@ -315,10 +371,8 @@ class Site_Tools extends Abstract_Tool {
 				throw new \Exception( 'Access to option "' . $name . '" is blocked for security.' );
 			}
 		}
-		foreach ( $this->secret_fragments as $fragment ) {
-			if ( false !== stripos( $name, $fragment ) ) {
-				throw new \Exception( 'Access to option "' . $name . '" is blocked: it may hold a credential.' );
-			}
+		if ( $this->looks_secret( $name ) ) {
+			throw new \Exception( 'Access to option "' . $name . '" is blocked: it may hold a credential.' );
 		}
 	}
 }

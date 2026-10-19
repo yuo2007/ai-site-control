@@ -27,6 +27,11 @@ class MCP_Server {
 	const SUPPORTED_VERSIONS = array( '2025-06-18', '2025-03-26', '2024-11-05' );
 
 	/**
+	 * Most JSON-RPC requests accepted in a single batch.
+	 */
+	const MAX_BATCH = 50;
+
+	/**
 	 * Tool registry.
 	 *
 	 * @var Tool_Registry
@@ -50,6 +55,13 @@ class MCP_Server {
 	 */
 	public function handle( $payload ) {
 		if ( is_array( $payload ) && array_is_list( $payload ) ) {
+			// One request may carry a whole batch, and nothing above this point
+			// bounds it. Without a cap a single POST can queue thousands of
+			// tools/call entries and run the site out of time or memory.
+			if ( count( $payload ) > self::MAX_BATCH ) {
+				return $this->error( null, -32600, sprintf( 'Batch too large: at most %d requests per call.', self::MAX_BATCH ) );
+			}
+
 			$responses = array();
 			foreach ( $payload as $item ) {
 				$r = $this->handle_single( $item );

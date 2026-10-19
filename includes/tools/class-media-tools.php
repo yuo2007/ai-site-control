@@ -166,10 +166,7 @@ class Media_Tools extends Abstract_Tool {
 		$this->load_media_deps();
 		$url = esc_url_raw( (string) $this->required( $args, 'url' ) );
 
-		$this->assert_external_url( $url );
-
-		$tmp = download_url( $url );
-		$this->unwrap( $tmp );
+		$tmp = $this->fetch_external_file( $url );
 
 		// download_url() imposes no size cap; a multi-GB target would fill the
 		// partition and take the database down with it.
@@ -343,6 +340,115 @@ class Media_Tools extends Abstract_Tool {
 	}
 
 	/**
+	 * Download a remote file, validating every hop.
+	 *
+	 * download_url() cannot be handed a pre-validated URL safely. It re-resolves
+	 * the hostname itself, so a DNS record with a near-zero TTL can answer the
+	 * check with a public address and the fetch with 169.254.169.254 — and that
+	 * is precisely the range assert_external_url() exists for, because
+	 * wp_safe_remote_get() blocks RFC1918 but not the cloud-metadata range. The
+	 * body is stored as an attachment and handed back as a public URL, so the
+	 * result would be a readable SSRF, not a blind one.
+	 *
+	 * Redirects are the same hole by another route: WordPress does validate
+	 * them, but with wp_http_validate_url(), which has the same blind spot.
+	 *
+	 * So redirects are followed here instead of by the HTTP layer, every hop is
+	 * checked with our own stricter rules, and the resolved address is pinned
+	 * for the connection via CURLOPT_RESOLVE — which keeps SNI and certificate
+	 * validation intact, unlike connecting to a bare IP.
+	 *
+	 * @param string $url URL to fetch.
+	 * @return string Path to the downloaded temp file.
+	 * @throws \Exception When the target is internal, unreachable, or loops.
+	 */
+	private function fetch_external_file( $url ) {
+		$max_hops = 5;
+
+		for ( $hop = 0; $hop < $max_hops; $hop++ ) {
+			$ips = $this->assert_external_url( $url );
+
+			$tmp = wp_tempnam( $url );
+			if ( ! $tmp ) {
+				throw new \Exception( 'Could not create a temporary file.' );
+			}
+
+			$pin = $this->pin_dns( $url, $ips[0] );
+
+			$response = wp_safe_remote_get(
+				$url,
+				array(
+					'timeout'     => 30,
+					'redirection' => 0,
+					'stream'      => true,
+					'filename'    => $tmp,
+				)
+			);
+
+			remove_action( 'http_api_curl', $pin );
+
+			if ( is_wp_error( $response ) ) {
+				wp_delete_file( $tmp );
+				throw new \Exception( $response->get_error_message() );
+			}
+
+			$code = (int) wp_remote_retrieve_response_code( $response );
+
+			if ( 200 === $code ) {
+				return $tmp;
+			}
+
+			wp_delete_file( $tmp );
+
+			if ( $code >= 300 && $code < 400 ) {
+				$location = wp_remote_retrieve_header( $response, 'location' );
+				if ( '' === $location ) {
+					throw new \Exception( 'Redirect without a destination.' );
+				}
+				// A relative Location is resolved against the hop we just made,
+				// so it cannot smuggle in a host that was never checked.
+				$url = \WP_Http::make_absolute_url( $location, $url );
+				continue;
+			}
+
+			throw new \Exception( 'Download failed with HTTP status ' . $code . '.' );
+		}
+
+		throw new \Exception( 'Too many redirects.' );
+	}
+
+	/**
+	 * Pin a hostname to an already-validated address for one request.
+	 *
+	 * Returns the callback so the caller can unhook it; leaving it registered
+	 * would pin an unrelated later request in the same page load.
+	 *
+	 * Only the cURL transport honours this. On the streams fallback the pin is
+	 * silently a no-op and the per-hop checks above carry the weight alone —
+	 * that closes the redirect route but not the rebinding race.
+	 *
+	 * @param string $url URL about to be fetched.
+	 * @param string $ip  Validated address for its host.
+	 * @return callable Hook callback, for remove_action().
+	 */
+	private function pin_dns( $url, $ip ) {
+		$host = (string) wp_parse_url( $url, PHP_URL_HOST );
+		$port = (int) wp_parse_url( $url, PHP_URL_PORT );
+		if ( ! $port ) {
+			$port = 'https' === strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) ) ? 443 : 80;
+		}
+
+		$callback = static function ( $handle ) use ( $host, $port, $ip ) {
+			if ( defined( 'CURLOPT_RESOLVE' ) ) {
+				curl_setopt( $handle, CURLOPT_RESOLVE, array( $host . ':' . $port . ':' . $ip ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+			}
+		};
+
+		add_action( 'http_api_curl', $callback );
+		return $callback;
+	}
+
+	/**
 	 * Reject URLs that resolve to an internal address.
 	 *
 	 * wp_safe_remote_get() (used by download_url) blocks file://, localhost
@@ -352,6 +458,7 @@ class Media_Tools extends Abstract_Tool {
 	 * blind one.
 	 *
 	 * @param string $url URL to fetch.
+	 * @return string[] The resolved addresses, for pinning by the caller.
 	 * @throws \Exception When the target is internal or unresolvable.
 	 */
 	private function assert_external_url( $url ) {
@@ -386,6 +493,8 @@ class Media_Tools extends Abstract_Tool {
 				}
 			}
 		}
+
+		return $ips;
 	}
 
 	/**

@@ -4,7 +4,7 @@ Tags: mcp, ai, claude, chatgpt, automation, woocommerce, polylang
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.0
-Stable tag: 0.6.1
+Stable tag: 0.6.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -94,6 +94,16 @@ Note: the configured user acts with its full WordPress capabilities. Use the lea
 * Per-tool audit log.
 
 == Changelog ==
+
+= 0.6.2 =
+* Security: `update_option` no longer writes transients. `_site_transient_update_plugins` and `_site_transient_update_themes` hold the package URL that WordPress downloads and unpacks on the next update, so writing one and then calling `update_plugin` installed arbitrary PHP from an arbitrary host. That is the same boundary the existing blocks on `uninstall_plugins` and `auto_update_plugins` exist to hold; the deny-list simply did not reach transients.
+* Security: `upload_media_from_url` now validates every redirect hop itself and pins the resolved address for the connection. Previously the URL was checked once and then handed to `download_url()`, which resolves the hostname again — so DNS with a near-zero TTL could answer the check with a public address and the fetch with 169.254.169.254. That range is exactly why the plugin carries its own check, because WordPress blocks RFC1918 but not cloud metadata, and the fetched body is stored as an attachment and returned as a public URL.
+* Security: `get_option` redacts credential-looking keys *inside* option values. The deny-list could only judge the option name, and plugins almost never give a secret its own option — they store one settings array under an innocent name, so `woocommerce_stripe_settings` handed `secret_key` straight to the model.
+* Security: `update_user` refuses to change the email or password of the account the connection itself acts as. Those two fields were exempt from the "not another administrator" guard, which turned a leaked token into permanent takeover with the owner locked out — and WordPress's confirm-your-new-address flow does not apply outside wp-admin.
+* Security: the WooCommerce tools now check capabilities against the specific product or order, like every other tool group. They relied on the blanket capability alone, so a role with `edit_products` but not `edit_others_products` — a common WooCommerce combination — could write to everyone's products.
+* Security: the authorization screen now shows the hostname the access will be sent to. Client registration is open by design, and the client name is chosen by whoever registers, so anyone could register a client called "Claude" pointing at their own server and mail the link to an administrator. The destination is the one fact that tells the real client from an impostor.
+* Security: JSON-RPC batches are capped at 50 requests; a single POST could previously queue thousands of tool calls.
+* Security: update packages are only accepted from GitHub's own download hosts, so an unexpected API response cannot turn an update check into an install from an arbitrary server.
 
 = 0.6.1 =
 * Added: an explanation of AI user-agent blocking, on the settings page and in the FAQ. A host or CDN that blocks AI bots makes the connection fail in a way that looks like a plugin fault: the WordPress sign-in succeeds, because it happens in your browser, and then the MCP request is refused, because that one comes from the AI provider's servers under their own user agent. The new section names the agent to allow for Claude, ChatGPT and Perplexity, makes the point that it is not the crawler agent and that those can stay blocked, gives a one-line curl command to confirm the block, and lists where such a rule usually lives.

@@ -184,10 +184,7 @@ class WooCommerce_Tools extends Abstract_Tool {
 	 * @throws \Exception When missing.
 	 */
 	public function get_product( array $args ) {
-		$product = wc_get_product( (int) $this->required( $args, 'id' ) );
-		if ( ! $product ) {
-			throw new \Exception( 'Product not found.' );
-		}
+		$product = $this->load_product( $args, 'read_post' );
 		return $this->format_product( $product, true );
 	}
 
@@ -221,10 +218,7 @@ class WooCommerce_Tools extends Abstract_Tool {
 	 * @throws \Exception When missing.
 	 */
 	public function update_product( array $args ) {
-		$product = wc_get_product( (int) $this->required( $args, 'id' ) );
-		if ( ! $product ) {
-			throw new \Exception( 'Product not found.' );
-		}
+		$product = $this->load_product( $args, 'edit_post' );
 		if ( isset( $args['name'] ) ) {
 			$product->set_name( (string) $args['name'] );
 		}
@@ -242,11 +236,8 @@ class WooCommerce_Tools extends Abstract_Tool {
 	 * @throws \Exception When missing.
 	 */
 	public function delete_product( array $args ) {
-		$product = wc_get_product( (int) $this->required( $args, 'id' ) );
-		if ( ! $product ) {
-			throw new \Exception( 'Product not found.' );
-		}
-		$id = $product->get_id();
+		$product = $this->load_product( $args, 'delete_post' );
+		$id      = $product->get_id();
 		$product->delete( ! empty( $args['force'] ) );
 		return array(
 			'deleted' => true,
@@ -291,10 +282,7 @@ class WooCommerce_Tools extends Abstract_Tool {
 	 * @throws \Exception When missing.
 	 */
 	public function get_order( array $args ) {
-		$order = wc_get_order( (int) $this->required( $args, 'id' ) );
-		if ( ! $order ) {
-			throw new \Exception( 'Order not found.' );
-		}
+		$order = $this->load_order( $args, 'read_post' );
 		return $this->format_order( $order, true );
 	}
 
@@ -306,10 +294,7 @@ class WooCommerce_Tools extends Abstract_Tool {
 	 * @throws \Exception When missing.
 	 */
 	public function update_order_status( array $args ) {
-		$order = wc_get_order( (int) $this->required( $args, 'id' ) );
-		if ( ! $order ) {
-			throw new \Exception( 'Order not found.' );
-		}
+		$order = $this->load_order( $args, 'edit_post' );
 		$order->update_status( (string) $this->required( $args, 'status' ), $args['note'] ?? '', true );
 		return $this->format_order( wc_get_order( $order->get_id() ), false );
 	}
@@ -443,5 +428,53 @@ class WooCommerce_Tools extends Abstract_Tool {
 			$data['payment_method']   = $o->get_payment_method_title();
 		}
 		return $data;
+	}
+
+	/**
+	 * Load a product the current user may act on.
+	 *
+	 * Every other tool group routes object access through Abstract_Tool's
+	 * assert_* helpers; these did not, and relied on the blanket capability the
+	 * registry checks. That is enough for a shop manager but not for the custom
+	 * roles WooCommerce installs collect: edit_products without
+	 * edit_others_products is a common combination, and it was granting write
+	 * access to everyone's products. WooCommerce's own REST API checks the
+	 * object, so this only brings the bridge back in line with it.
+	 *
+	 * @param array  $args Args.
+	 * @param string $cap  Meta capability to check against the product.
+	 * @return \WC_Product
+	 * @throws \Exception When missing or not permitted.
+	 */
+	private function load_product( array $args, $cap = 'edit_post' ) {
+		$id      = (int) $this->required( $args, 'id' );
+		$product = wc_get_product( $id );
+		if ( ! $product ) {
+			throw new \Exception( 'Product not found.' );
+		}
+		$this->assert_can( $cap, $product->get_id() );
+		return $product;
+	}
+
+	/**
+	 * Load an order the current user may act on.
+	 *
+	 * Orders carry customer personal data — billing and shipping addresses,
+	 * email, phone — so the per-object check matters more here than anywhere
+	 * else in this group.
+	 *
+	 * @param array  $args Args.
+	 * @param string $cap  Meta capability to check against the order.
+	 * @return \WC_Order
+	 * @throws \Exception When missing or not permitted.
+	 */
+	private function load_order( array $args, $cap = 'edit_post' ) {
+		$id    = (int) $this->required( $args, 'id' );
+		$order = wc_get_order( $id );
+		if ( ! $order ) {
+			throw new \Exception( 'Order not found.' );
+		}
+		$this->assert_can( $cap, $order->get_id() );
+		return $order;
 	}
 }

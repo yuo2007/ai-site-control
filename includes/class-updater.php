@@ -282,6 +282,32 @@ class Updater {
 	}
 
 	/**
+	 * Hosts a package may be downloaded from.
+	 *
+	 * Whatever comes back here is handed to WP_Upgrader, which unpacks it into
+	 * wp-content/plugins — so the response from the API is not something to
+	 * take on trust. Pinning the host means a tampered or unexpected response
+	 * cannot turn an update check into an install from an arbitrary server.
+	 *
+	 * @var string[]
+	 */
+	private $package_hosts = array( 'github.com', 'objects.githubusercontent.com', 'codeload.github.com' );
+
+	/**
+	 * Whether a package URL may be handed to the upgrader.
+	 *
+	 * @param string $url Candidate URL.
+	 * @return bool
+	 */
+	private function is_trusted_package( $url ) {
+		$parts = wp_parse_url( $url );
+		if ( empty( $parts['host'] ) || empty( $parts['scheme'] ) || 'https' !== strtolower( $parts['scheme'] ) ) {
+			return false;
+		}
+		return in_array( strtolower( $parts['host'] ), $this->package_hosts, true );
+	}
+
+	/**
 	 * Pick the download URL for a release.
 	 *
 	 * @param array $release Release data.
@@ -299,11 +325,15 @@ class Updater {
 			if ( '.zip' !== substr( $name, -4 ) ) {
 				continue;
 			}
+			$download = esc_url_raw( (string) $asset['browser_download_url'] );
+			if ( ! $this->is_trusted_package( $download ) ) {
+				continue;
+			}
 			if ( WPMCP_SLUG . '.zip' === $name ) {
-				return esc_url_raw( (string) $asset['browser_download_url'] );
+				return $download;
 			}
 			if ( '' === $fallback ) {
-				$fallback = esc_url_raw( (string) $asset['browser_download_url'] );
+				$fallback = $download;
 			}
 		}
 
@@ -315,7 +345,11 @@ class Updater {
 		// correctly thanks to fix_source_dir(), and offering it beats leaving
 		// every site silently stuck on an old version because a tag was pushed
 		// without the workflow completing.
-		return empty( $release['zipball_url'] ) ? '' : esc_url_raw( (string) $release['zipball_url'] );
+		if ( empty( $release['zipball_url'] ) ) {
+			return '';
+		}
+		$zipball = esc_url_raw( (string) $release['zipball_url'] );
+		return $this->is_trusted_package( $zipball ) ? $zipball : '';
 	}
 
 	/**
