@@ -77,6 +77,14 @@ Ask for the user-initiated agent to be removed from the block list by name. Bloc
 
 Through WordPress, like any other plugin from the directory: new versions appear under Dashboard → Updates and on the Plugins screen. Nothing has to be configured and nothing is fetched from anywhere but WordPress.org.
 
+== Screenshots ==
+
+1. Settings: the endpoint address, the account connections act as, and read-only mode.
+2. Every tool can be switched off individually; unchecked tools never appear in the client's tool list.
+3. Active connections — what signed in, as whom, until when, and a Revoke button for each.
+4. The audit log: the last hundred tool calls with their result, refusals included.
+5. The authorization screen a client sends you to, naming the host the access will be sent to.
+
 == Security ==
 
 * The token is stored hashed (never in plaintext) and compared in constant time.

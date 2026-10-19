@@ -5,6 +5,7 @@
 .gitignore
 .distignore
 .distbuild
+.wordpress-org
 notes.md
 *.zip
 .DS_Store
