@@ -1,5 +1,5 @@
 === AI Site Control ===
-Contributors: OleksandrSimonov
+Contributors: capoeira314
 Tags: mcp, ai, automation, api, content-management
 Requires at least: 5.8
 Tested up to: 7.1
